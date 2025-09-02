@@ -1,9 +1,149 @@
 const express = require("express");
 const Interview = require("../models/Interview");
 const Candidate = require("../models/Candidate");
+const InterviewGroup = require("../models/InterviewGroup");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
+
+// @route   GET /api/reports/interview-groups
+// @desc    Get reports organized by interview groups
+// @access  Private
+router.get("/interview-groups", auth, async (req, res) => {
+  try {
+    const interviewGroups = await InterviewGroup.find({
+      recruiterId: req.user._id,
+    }).sort({ createdAt: -1 });
+
+    const groupReports = await Promise.all(
+      interviewGroups.map(async (group) => {
+        // Get all interviews for this group
+        const interviews = await Interview.find({
+          interviewGroup: group._id,
+        })
+          .populate("candidate", "name email role college department")
+          .sort({ createdAt: -1 });
+
+        // Calculate group statistics
+        const totalInterviews = interviews.length;
+        const completedInterviews = interviews.filter(
+          (i) => i.analysisStatus === "completed"
+        ).length;
+        const pendingInterviews = totalInterviews - completedInterviews;
+
+        // Calculate scores for completed interviews
+        const completedWithScores = interviews.filter(
+          (i) => i.analysisStatus === "completed" && i.analysis?.overallScore
+        );
+
+        const averageScore =
+          completedWithScores.length > 0
+            ? completedWithScores.reduce(
+                (sum, i) => sum + i.analysis.overallScore,
+                0
+              ) / completedWithScores.length
+            : 0;
+
+        const topScore =
+          completedWithScores.length > 0
+            ? Math.max(
+                ...completedWithScores.map((i) => i.analysis.overallScore)
+              )
+            : 0;
+
+        const averageTechnical =
+          completedWithScores.length > 0
+            ? completedWithScores.reduce(
+                (sum, i) => sum + (i.analysis.technicalScore || 0),
+                0
+              ) / completedWithScores.length
+            : 0;
+
+        const averageCommunication =
+          completedWithScores.length > 0
+            ? completedWithScores.reduce(
+                (sum, i) => sum + (i.analysis.communicationScore || 0),
+                0
+              ) / completedWithScores.length
+            : 0;
+
+        const averageConfidence =
+          completedWithScores.length > 0
+            ? completedWithScores.reduce(
+                (sum, i) => sum + (i.analysis.confidenceScore || 0),
+                0
+              ) / completedWithScores.length
+            : 0;
+
+        return {
+          group: {
+            _id: group._id,
+            name: group.name,
+            college: group.college,
+            department: group.department,
+            position: group.position,
+            batch: group.batch,
+            status: group.status,
+            maxCandidates: group.maxCandidates,
+            interviewDate: group.interviewDate,
+          },
+          statistics: {
+            totalInterviews,
+            completedInterviews,
+            pendingInterviews,
+            averageScore: Math.round(averageScore * 10) / 10,
+            topScore: Math.round(topScore * 10) / 10,
+            averageTechnical: Math.round(averageTechnical * 10) / 10,
+            averageCommunication: Math.round(averageCommunication * 10) / 10,
+            averageConfidence: Math.round(averageConfidence * 10) / 10,
+            completionRate:
+              totalInterviews > 0
+                ? Math.round((completedInterviews / totalInterviews) * 100)
+                : 0,
+          },
+          interviews: interviews.map((interview) => ({
+            _id: interview._id,
+            candidate: interview.candidate,
+            status: interview.status,
+            analysisStatus: interview.analysisStatus,
+            createdAt: interview.createdAt,
+            analysis: interview.analysis,
+          })),
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      groups: groupReports,
+      summary: {
+        totalGroups: groupReports.length,
+        totalInterviews: groupReports.reduce(
+          (sum, g) => sum + g.statistics.totalInterviews,
+          0
+        ),
+        totalCompletedInterviews: groupReports.reduce(
+          (sum, g) => sum + g.statistics.completedInterviews,
+          0
+        ),
+        overallAverageScore:
+          groupReports.length > 0
+            ? Math.round(
+                (groupReports.reduce(
+                  (sum, g) => sum + g.statistics.averageScore,
+                  0
+                ) /
+                  groupReports.length) *
+                  10
+              ) / 10
+            : 0,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching interview group reports:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
 
 // @route   GET /api/reports/batch-analytics
 // @desc    Get batch/college-wise analytics

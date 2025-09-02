@@ -24,62 +24,33 @@ const Candidates = () => {
   });
 
   useEffect(() => {
-    // Mock data - replace with actual API call
-    const mockCandidates = [
-      {
-        id: 1,
-        name: "John Doe",
-        email: "john@example.com",
-        role: "Frontend Developer",
-        phone: "+1234567890",
-        experience: "3 years",
-        status: "Active",
-        interviews: 2,
-      },
-      {
-        id: 2,
-        name: "Jane Smith",
-        email: "jane@example.com",
-        role: "Backend Developer",
-        phone: "+1234567891",
-        experience: "5 years",
-        status: "Active",
-        interviews: 1,
-      },
-      {
-        id: 3,
-        name: "Mike Johnson",
-        email: "mike@example.com",
-        role: "Full Stack Developer",
-        phone: "+1234567892",
-        experience: "4 years",
-        status: "Active",
-        interviews: 3,
-      },
-      {
-        id: 4,
-        name: "Sarah Wilson",
-        email: "sarah@example.com",
-        role: "UI/UX Designer",
-        phone: "+1234567893",
-        experience: "2 years",
-        status: "Active",
-        interviews: 1,
-      },
-      {
-        id: 5,
-        name: "Alex Brown",
-        email: "alex@example.com",
-        role: "DevOps Engineer",
-        phone: "+1234567894",
-        experience: "6 years",
-        status: "Active",
-        interviews: 0,
-      },
-    ];
-    setCandidates(mockCandidates);
-    setFilteredCandidates(mockCandidates);
+    fetchCandidates();
   }, []);
+
+  const fetchCandidates = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:5000/api/candidates", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCandidates(data.candidates || []);
+        setFilteredCandidates(data.candidates || []);
+      } else {
+        console.error("Error fetching candidates");
+        setCandidates([]);
+        setFilteredCandidates([]);
+      }
+    } catch (error) {
+      console.error("Error fetching candidates:", error);
+      setCandidates([]);
+      setFilteredCandidates([]);
+    }
+  };
 
   useEffect(() => {
     const filtered = candidates.filter(
@@ -116,41 +87,72 @@ const Candidates = () => {
   const handleEditCandidate = (candidate) => {
     setSelectedCandidate(candidate);
     setFormData({
-      name: candidate.name,
-      email: candidate.email,
-      role: candidate.role,
-      phone: candidate.phone,
-      experience: candidate.experience,
+      name: candidate.name || "",
+      email: candidate.email || "",
+      role: candidate.role || "",
+      phone: candidate.phone || "",
+      experience: candidate.experience || "",
     });
     setShowModal(true);
   };
 
-  const handleDeleteCandidate = (id) => {
+  const handleDeleteCandidate = async (id) => {
     if (window.confirm("Are you sure you want to delete this candidate?")) {
-      setCandidates(candidates.filter((c) => c.id !== id));
+      try {
+        const token = localStorage.getItem("token");
+        const response = await fetch(
+          `http://localhost:5000/api/candidates/${id}`,
+          {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (response.ok) {
+          await fetchCandidates();
+        } else {
+          const data = await response.json();
+          alert(data.message || "Error deleting candidate");
+        }
+      } catch (error) {
+        console.error("Error deleting candidate:", error);
+        alert("Error deleting candidate");
+      }
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (selectedCandidate) {
-      // Update existing candidate
-      setCandidates(
-        candidates.map((c) =>
-          c.id === selectedCandidate.id ? { ...c, ...formData } : c
-        )
-      );
-    } else {
-      // Add new candidate
-      const newCandidate = {
-        id: Date.now(),
-        ...formData,
-        status: "Active",
-        interviews: 0,
-      };
-      setCandidates([...candidates, newCandidate]);
+    try {
+      const token = localStorage.getItem("token");
+      const url = selectedCandidate
+        ? `http://localhost:5000/api/candidates/${selectedCandidate._id}`
+        : "http://localhost:5000/api/candidates";
+
+      const method = selectedCandidate ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.ok) {
+        setShowModal(false);
+        await fetchCandidates();
+      } else {
+        const data = await response.json();
+        alert(data.message || "Error saving candidate");
+      }
+    } catch (error) {
+      console.error("Error saving candidate:", error);
+      alert("Error saving candidate");
     }
-    setShowModal(false);
   };
 
   const handleChange = (e) => {
@@ -224,7 +226,7 @@ const Candidates = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {currentCandidates.map((candidate) => (
-                <tr key={candidate.id} className="hover:bg-gray-50">
+                <tr key={candidate._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 flex-shrink-0">
@@ -270,7 +272,7 @@ const Candidates = () => {
                         <PencilIcon className="h-5 w-5" />
                       </button>
                       <button
-                        onClick={() => handleDeleteCandidate(candidate.id)}
+                        onClick={() => handleDeleteCandidate(candidate._id)}
                         className="text-red-600 hover:text-red-900"
                       >
                         <TrashIcon className="h-5 w-5" />

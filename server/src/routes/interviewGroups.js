@@ -2,7 +2,6 @@ const express = require("express");
 const InterviewGroup = require("../models/InterviewGroup");
 const Interview = require("../models/Interview");
 const Candidate = require("../models/Candidate");
-const QuestionSet = require("../models/QuestionSet");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
@@ -20,7 +19,6 @@ router.get("/", auth, async (req, res) => {
     if (position) query.position = new RegExp(position, "i");
 
     const interviewGroups = await InterviewGroup.find(query)
-      .populate("questionSet", "title totalQuestions")
       .populate("recruiterId", "name email")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
@@ -45,9 +43,9 @@ router.get("/", auth, async (req, res) => {
 // @access  Private
 router.get("/:id", auth, async (req, res) => {
   try {
-    const interviewGroup = await InterviewGroup.findById(req.params.id)
-      .populate("questionSet")
-      .populate("recruiterId", "name email");
+    const interviewGroup = await InterviewGroup.findById(
+      req.params.id
+    ).populate("recruiterId", "name email");
 
     if (!interviewGroup) {
       return res.status(404).json({ message: "Interview group not found" });
@@ -56,7 +54,6 @@ router.get("/:id", auth, async (req, res) => {
     // Get all interviews in this group
     const interviews = await Interview.find({ interviewGroup: req.params.id })
       .populate("candidate")
-      .populate("questionSet", "title")
       .sort({ createdAt: -1 });
 
     res.json({
@@ -82,7 +79,6 @@ router.post("/", auth, async (req, res) => {
       department,
       batch,
       position,
-      questionSet,
       interviewDate,
       location,
       instructions,
@@ -101,10 +97,6 @@ router.post("/", auth, async (req, res) => {
       });
     }
 
-    // Handle empty string for questionSet (convert to null)
-    const processedQuestionSet =
-      questionSet && questionSet.trim() !== "" ? questionSet : null;
-
     const interviewGroup = new InterviewGroup({
       name,
       description,
@@ -112,7 +104,6 @@ router.post("/", auth, async (req, res) => {
       department,
       batch,
       position,
-      questionSet: processedQuestionSet,
       recruiterId: req.user._id,
       interviewDate,
       location,
@@ -121,8 +112,6 @@ router.post("/", auth, async (req, res) => {
     });
 
     await interviewGroup.save();
-
-    await interviewGroup.populate("questionSet", "title totalQuestions");
 
     res.status(201).json({
       message: "Interview group created successfully",
@@ -146,7 +135,6 @@ router.put("/:id", auth, async (req, res) => {
       department,
       batch,
       position,
-      questionSet,
       status,
       interviewDate,
       location,
@@ -172,10 +160,6 @@ router.put("/:id", auth, async (req, res) => {
     if (department) interviewGroup.department = department;
     if (batch) interviewGroup.batch = batch;
     if (position) interviewGroup.position = position;
-    if (typeof questionSet !== "undefined") {
-      interviewGroup.questionSet =
-        questionSet && questionSet.trim() !== "" ? questionSet : null;
-    }
     if (status) interviewGroup.status = status;
     if (interviewDate) interviewGroup.interviewDate = interviewDate;
     if (location) interviewGroup.location = location;
@@ -183,8 +167,6 @@ router.put("/:id", auth, async (req, res) => {
     if (maxCandidates) interviewGroup.maxCandidates = maxCandidates;
 
     await interviewGroup.save();
-
-    await interviewGroup.populate("questionSet", "title totalQuestions");
 
     res.json({
       message: "Interview group updated successfully",
@@ -271,7 +253,6 @@ router.post("/:id/add-candidates", auth, async (req, res) => {
           candidate: candidateId,
           interviewer: req.user._id,
           interviewGroup: req.params.id,
-          questionSet: interviewGroup.questionSet,
           position: interviewGroup.position,
           department: interviewGroup.department,
           status: "Scheduled",
@@ -339,11 +320,9 @@ router.delete("/:id/remove-candidate/:candidateId", auth, async (req, res) => {
     });
 
     if (!interview) {
-      return res
-        .status(404)
-        .json({
-          message: "Interview not found for this candidate in this group",
-        });
+      return res.status(404).json({
+        message: "Interview not found for this candidate in this group",
+      });
     }
 
     await Interview.findByIdAndDelete(interview._id);

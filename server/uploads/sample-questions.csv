@@ -1,6 +1,0 @@
-question,expectedAnswer,category,difficulty,points
-"What is JavaScript?","JavaScript is a high-level, interpreted programming language that is widely used for web development. It enables interactive web pages and dynamic content.","technical","easy",10
-"Explain closures in JavaScript","A closure is a function that has access to variables in its outer scope even after the outer function has returned. It allows data privacy and encapsulation.","technical","medium",15
-"What is the difference between let, const, and var?","var has function scope and is hoisted, let and const have block scope. const cannot be reassigned after declaration, while let can be.","technical","medium",15
-"Describe your approach to problem-solving","Candidate should demonstrate systematic thinking, breaking down complex problems, research skills, and persistence. Look for logical reasoning and adaptability.","behavioral","medium",20
-"Why do you want to work for our company?","Candidate should show research about the company, alignment with company values, career goals, and genuine interest. Avoid generic answers.","situational","easy",15

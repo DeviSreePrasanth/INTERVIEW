@@ -15,20 +15,11 @@ import {
   CloudArrowUpIcon,
 } from "@heroicons/react/24/outline";
 
-// Import mock data
-import {
-  getFilteredGroups,
-  getGroupDetails,
-} from "../data/mockInterviewGroups";
-import { getQuestionSets } from "../data/mockQuestionSets";
-import { getCandidates } from "../data/mockCandidates";
-
 const InterviewGroups = () => {
   const navigate = useNavigate();
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [questionSets, setQuestionSets] = useState([]);
   const [candidates, setCandidates] = useState([]);
 
   const [newGroup, setNewGroup] = useState({
@@ -38,7 +29,6 @@ const InterviewGroups = () => {
     department: "",
     batch: "",
     position: "",
-    questionSet: "",
     interviewDate: "",
     location: "",
     instructions: "",
@@ -52,20 +42,61 @@ const InterviewGroups = () => {
   });
 
   useEffect(() => {
-    // Using static data for demonstration
-    loadStaticData();
+    fetchInterviewGroups();
+    fetchCandidates();
   }, [filters]);
 
-  const loadStaticData = () => {
-    // Load data from separate mock files
-    const filteredGroups = getFilteredGroups(filters);
-    const questionSets = getQuestionSets();
-    const candidates = getCandidates();
+  const fetchInterviewGroups = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("token");
+      const queryParams = new URLSearchParams();
 
-    setGroups(filteredGroups);
-    setQuestionSets(questionSets);
-    setCandidates(candidates);
-    setLoading(false);
+      if (filters.status) queryParams.append("status", filters.status);
+      if (filters.college) queryParams.append("college", filters.college);
+      if (filters.position) queryParams.append("position", filters.position);
+
+      const response = await fetch(
+        `http://localhost:5000/api/interview-groups?${queryParams}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setGroups(data.interviewGroups || []);
+      } else {
+        console.error("Error fetching interview groups");
+        setGroups([]);
+      }
+    } catch (error) {
+      console.error("Error fetching interview groups:", error);
+      setGroups([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCandidates = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:5000/api/candidates", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCandidates(data.candidates || []);
+      }
+    } catch (error) {
+      console.error("Error fetching candidates:", error);
+      setCandidates([]);
+    }
   };
 
   const handleCreateGroup = async (e) => {
@@ -93,7 +124,6 @@ const InterviewGroups = () => {
           department: "",
           batch: "",
           position: "",
-          questionSet: "",
           interviewDate: "",
           location: "",
           instructions: "",
@@ -327,14 +357,15 @@ const InterviewGroups = () => {
         ))}
       </div>
 
-      {groups.length === 0 && (
+      {groups.length === 0 && !loading && (
         <div className="text-center py-12">
           <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No interview groups
+            No interview groups found
           </h3>
           <p className="text-gray-600 mb-4">
-            Create your first interview group to get started
+            You haven't created any interview groups yet. Create your first
+            group to get started.
           </p>
           <button
             onClick={() => setShowCreateModal(true)}
@@ -441,25 +472,6 @@ const InterviewGroups = () => {
                     max="200"
                     className="w-full border border-gray-300 rounded-md px-3 py-2"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Question Set
-                  </label>
-                  <select
-                    value={newGroup.questionSet}
-                    onChange={(e) =>
-                      setNewGroup({ ...newGroup, questionSet: e.target.value })
-                    }
-                    className="w-full border border-gray-300 rounded-md px-3 py-2"
-                  >
-                    <option value="">Select Question Set</option>
-                    {questionSets.map((qs) => (
-                      <option key={qs._id} value={qs._id}>
-                        {qs.title} ({qs.totalQuestions} questions)
-                      </option>
-                    ))}
-                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

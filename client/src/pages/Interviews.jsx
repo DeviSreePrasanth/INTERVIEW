@@ -12,17 +12,6 @@ import {
   CloudArrowUpIcon,
   ArrowLeftIcon,
 } from "@heroicons/react/24/outline";
-import {
-  getInterviews,
-  getFilteredInterviews,
-  getInterviewById,
-  createInterview,
-  updateInterview,
-  deleteInterview,
-  getInterviewStats,
-} from "../data/mockInterviewsData";
-import { getGroups } from "../data/mockInterviewGroups";
-import { getCandidates } from "../data/mockCandidates";
 import { processInterviewAudio } from "../services/speechAnalysisService";
 
 const Interviews = () => {
@@ -71,38 +60,70 @@ const Interviews = () => {
     }
   }, [searchParams, selectedGroupCollege, navigate]);
 
-  const loadStaticData = () => {
-    // Only load interviews if a specific college is selected
-    if (selectedGroupCollege) {
-      let filteredInterviews = getFilteredInterviews(filters);
+  const loadStaticData = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("token");
 
-      // Filter by college
-      filteredInterviews = filteredInterviews.filter(
-        (interview) => interview.candidateCollege === selectedGroupCollege
-      );
+      // Load interview groups
+      const groupsResponse = await fetch("/api/interview-groups", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const groups = await groupsResponse.json();
+      setInterviewGroups(groups);
 
-      setInterviews(filteredInterviews);
-    } else {
-      // Don't load any interviews by default
-      setInterviews([]);
+      // Load candidates - filter by college if a group is selected
+      const candidatesResponse = await fetch("/api/candidates", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const allCandidates = await candidatesResponse.json();
+
+      let filteredCandidates = [];
+      if (selectedGroupCollege) {
+        filteredCandidates = allCandidates.filter(
+          (candidate) => candidate.college === selectedGroupCollege
+        );
+      }
+      setCandidates(filteredCandidates);
+
+      // Load interviews - only if a specific college is selected
+      if (selectedGroupCollege) {
+        const interviewsResponse = await fetch("/api/interviews", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const allInterviews = await interviewsResponse.json();
+
+        // Filter by college and apply other filters
+        let filteredInterviews = allInterviews.filter(
+          (interview) => interview.candidate?.college === selectedGroupCollege
+        );
+
+        // Apply additional filters
+        if (filters.status) {
+          filteredInterviews = filteredInterviews.filter(
+            (interview) => interview.status === filters.status
+          );
+        }
+        if (filters.analysisStatus) {
+          filteredInterviews = filteredInterviews.filter(
+            (interview) => interview.analysisStatus === filters.analysisStatus
+          );
+        }
+        if (filters.position) {
+          filteredInterviews = filteredInterviews.filter(
+            (interview) => interview.position === filters.position
+          );
+        }
+
+        setInterviews(filteredInterviews);
+      } else {
+        setInterviews([]);
+      }
+    } catch (error) {
+      console.error("Error loading data:", error);
+    } finally {
+      setLoading(false);
     }
-
-    // Load interview groups
-    const groups = getGroups();
-    setInterviewGroups(groups);
-
-    // Load candidates - filter by college if a group is selected
-    const allCandidates = getCandidates();
-    let filteredCandidates = [];
-
-    if (selectedGroupCollege) {
-      filteredCandidates = allCandidates.filter(
-        (candidate) => candidate.college === selectedGroupCollege
-      );
-    }
-
-    setCandidates(filteredCandidates);
-    setLoading(false);
   }; // Handle context from Interview Groups page
   useEffect(() => {
     const selectedGroup = localStorage.getItem("selectedInterviewGroup");

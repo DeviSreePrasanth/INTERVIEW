@@ -1,5 +1,6 @@
 const express = require("express");
 const Candidate = require("../models/Candidate");
+const Interview = require("../models/Interview");
 const auth = require("../middleware/auth");
 
 const router = express.Router();
@@ -26,10 +27,23 @@ router.get("/", auth, async (req, res) => {
       .skip((page - 1) * limit)
       .sort({ createdAt: -1 });
 
+    // Add interview count for each candidate
+    const candidatesWithInterviews = await Promise.all(
+      candidates.map(async (candidate) => {
+        const interviewCount = await Interview.countDocuments({
+          candidate: candidate._id,
+        });
+        return {
+          ...candidate.toObject(),
+          interviews: interviewCount,
+        };
+      })
+    );
+
     const total = await Candidate.countDocuments(query);
 
     res.json({
-      candidates,
+      candidates: candidatesWithInterviews,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total,

@@ -28,10 +28,6 @@ const interviewGroupSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    questionSet: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "QuestionSet",
-    },
     recruiterId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
