@@ -100,7 +100,7 @@ const interviewSchema = new mongoose.Schema(
     },
     // Multiple audio sessions support
     audioSessions: [audioSessionSchema],
-    
+
     // Legacy fields for backward compatibility
     // Uploaded interview audio/video file metadata
     interviewFile: {

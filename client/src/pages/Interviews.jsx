@@ -47,12 +47,12 @@ const Interviews = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [currentTranscript, setCurrentTranscript] = useState(null);
-  
+
   // Multiple concurrent processing support
   const [activePolling, setActivePolling] = useState(new Map()); // Map of interviewId -> intervalId
   const activePollingRef = useRef(new Map()); // Ref to avoid dependency issues
   const [processingInterviews, setProcessingInterviews] = useState(new Set()); // Set of processing interview IDs
-  
+
   const [formStep, setFormStep] = useState(1);
   const [audioFile, setAudioFile] = useState(null);
   const [audioPreview, setAudioPreview] = useState(null);
@@ -122,7 +122,7 @@ const Interviews = () => {
       }
 
       // Add to processing set
-      setProcessingInterviews(prev => new Set(prev).add(interviewId));
+      setProcessingInterviews((prev) => new Set(prev).add(interviewId));
 
       const interval = setInterval(async () => {
         try {
@@ -153,17 +153,27 @@ const Interviews = () => {
             data.analysisStatus === "Analyzed" ||
             data.analysisStatus === "Failed"
           ) {
-            console.log("Processing complete for interview:", interviewId, "Status:", data.analysisStatus);
+            console.log(
+              "Processing complete for interview:",
+              interviewId,
+              "Status:",
+              data.analysisStatus
+            );
             stopPollingTranscript(interviewId);
-            
+
             // Reload interviews list to show updated status
             await loadInterviewGroupData();
-            
+
             // Show notification
-            const message = data.analysisStatus === "Analyzed" 
-              ? `Audio processing completed for interview ${interviewId.slice(-6)}`
-              : `Audio processing failed for interview ${interviewId.slice(-6)}`;
-            
+            const message =
+              data.analysisStatus === "Analyzed"
+                ? `Audio processing completed for interview ${interviewId.slice(
+                    -6
+                  )}`
+                : `Audio processing failed for interview ${interviewId.slice(
+                    -6
+                  )}`;
+
             // Optional: Show a toast notification instead of alert
             console.log(message);
           }
@@ -175,7 +185,7 @@ const Interviews = () => {
 
       // Store the interval ID
       activePollingRef.current.set(interviewId, interval);
-      setActivePolling(prev => new Map(prev).set(interviewId, interval));
+      setActivePolling((prev) => new Map(prev).set(interviewId, interval));
     },
     [] // No dependencies needed since we use refs
   );
@@ -188,15 +198,15 @@ const Interviews = () => {
       clearInterval(intervalId);
       activePollingRef.current.delete(interviewId);
     }
-    
+
     // Update state
-    setActivePolling(prev => {
+    setActivePolling((prev) => {
       const newMap = new Map(prev);
       newMap.delete(interviewId);
       return newMap;
     });
-    
-    setProcessingInterviews(prev => {
+
+    setProcessingInterviews((prev) => {
       const newSet = new Set(prev);
       newSet.delete(interviewId);
       return newSet;
@@ -224,10 +234,13 @@ const Interviews = () => {
         // If we have a group ID from URL but no group data, fetch it
         try {
           const token = localStorage.getItem("token");
-          const response = await fetch(`/api/interview-groups/${groupIdFromUrl}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          
+          const response = await fetch(
+            `/api/interview-groups/${groupIdFromUrl}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+
           if (response.ok) {
             const data = await response.json();
             setSelectedInterviewGroup(data.interviewGroup);
@@ -276,11 +289,11 @@ const Interviews = () => {
 
       const data = await response.json();
       console.log("Received interview data:", data);
-      
+
       // The response should have interviews array
       const interviewsArray = data.interviews || [];
       console.log("Setting interviews:", interviewsArray);
-      
+
       setInterviews(interviewsArray);
     } catch (error) {
       console.error("Error loading interview group data:", error);
@@ -466,18 +479,23 @@ const Interviews = () => {
 
       // If audio file was uploaded, start background processing
       if (audioFile) {
-        console.log("Starting background processing for ID:", createdInterview._id);
+        console.log(
+          "Starting background processing for ID:",
+          createdInterview._id
+        );
         // Start polling in background without blocking UI
         startPollingTranscript(createdInterview._id);
-        
+
         // Immediately return to main view
         setFormStep(1);
         resetForm();
         setShowCreateModal(false);
         await reloadInterviewData();
-        
+
         // Show success message with processing info
-        alert("Interview created successfully! Audio processing has started in the background.");
+        alert(
+          "Interview created successfully! Audio processing has started in the background."
+        );
       } else {
         // No audio file, interview created successfully
         setFormStep(1);
@@ -568,22 +586,28 @@ const Interviews = () => {
   // Filter and search functions
   const filteredInterviews = interviews.filter((interview) => {
     // If no search term, consider it a match
-    const matchesSearch = !searchTerm || 
-      (interview.candidateName && interview.candidateName
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())) ||
-      (interview.candidateEmail && interview.candidateEmail
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())) ||
-      (interview.interviewerName && interview.interviewerName
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())) ||
-      (interview.candidate?.name && interview.candidate.name
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())) ||
-      (interview.candidate?.email && interview.candidate.email
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()));
+    const matchesSearch =
+      !searchTerm ||
+      (interview.candidateName &&
+        interview.candidateName
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())) ||
+      (interview.candidateEmail &&
+        interview.candidateEmail
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())) ||
+      (interview.interviewerName &&
+        interview.interviewerName
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())) ||
+      (interview.candidate?.name &&
+        interview.candidate.name
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())) ||
+      (interview.candidate?.email &&
+        interview.candidate.email
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()));
 
     const matchesStatus =
       filterStatus === "all" || interview.status === filterStatus;
@@ -1525,6 +1549,100 @@ const Interviews = () => {
   const InterviewDetailsModal = () => {
     if (!showDetails || !selectedInterview) return null;
 
+    // Helper function to parse transcript into Q&A format
+    const parseTranscriptToQA = (transcript) => {
+      if (!transcript) return [];
+
+      const text =
+        typeof transcript === "object"
+          ? transcript.cleaned || transcript
+          : transcript;
+      if (!text) return [];
+
+      // Split by common question patterns and indicators
+      const sentences = text
+        .split(/[.!?]+/)
+        .filter((sentence) => sentence.trim().length > 0);
+      const qaItems = [];
+      let currentQuestion = null;
+      let currentAnswer = [];
+
+      sentences.forEach((sentence, index) => {
+        const trimmedSentence = sentence.trim();
+        if (!trimmedSentence) return;
+
+        // Detect question patterns
+        const questionPatterns = [
+          /^(what|how|why|when|where|who|which|can you|could you|would you|do you|did you|have you|are you|will you)/i,
+          /\?$/,
+          /^(tell me|describe|explain|walk me through)/i,
+          /^(interviewer|hr|recruiter):/i,
+        ];
+
+        // Detect answer patterns
+        const answerPatterns = [
+          /^(i |my |yes|no|well|so|actually|basically|candidate:|interviewee:)/i,
+          /^(sure|definitely|absolutely|of course)/i,
+        ];
+
+        const isQuestion = questionPatterns.some((pattern) =>
+          pattern.test(trimmedSentence)
+        );
+        const isAnswer = answerPatterns.some((pattern) =>
+          pattern.test(trimmedSentence)
+        );
+
+        if (isQuestion || (index === 0 && !isAnswer)) {
+          // Save previous Q&A pair if exists
+          if (currentQuestion && currentAnswer.length > 0) {
+            qaItems.push({
+              question: currentQuestion,
+              answer: currentAnswer.join(" ").trim(),
+            });
+          }
+
+          // Start new question
+          currentQuestion = trimmedSentence.replace(
+            /^(interviewer|hr|recruiter):\s*/i,
+            ""
+          );
+          currentAnswer = [];
+        } else {
+          // Add to current answer
+          const cleanAnswer = trimmedSentence.replace(
+            /^(candidate|interviewee):\s*/i,
+            ""
+          );
+          currentAnswer.push(cleanAnswer);
+        }
+      });
+
+      // Add the last Q&A pair
+      if (currentQuestion && currentAnswer.length > 0) {
+        qaItems.push({
+          question: currentQuestion,
+          answer: currentAnswer.join(" ").trim(),
+        });
+      }
+
+      // If no clear Q&A structure detected, create a fallback structure
+      if (qaItems.length === 0 && text.length > 0) {
+        const paragraphs = text
+          .split(/\n\n|\n/)
+          .filter((p) => p.trim().length > 0);
+        paragraphs.forEach((paragraph, index) => {
+          if (index % 2 === 0) {
+            qaItems.push({
+              question: `Question ${Math.floor(index / 2) + 1}`,
+              answer: paragraph.trim(),
+            });
+          }
+        });
+      }
+
+      return qaItems;
+    };
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg p-6 w-full max-w-6xl max-h-screen overflow-y-auto">
@@ -1543,15 +1661,21 @@ const Interviews = () => {
               <h3 className="font-semibold mb-3">Candidate Information</h3>
               <p>
                 <strong>Name:</strong>{" "}
-                {selectedInterview.candidateName || selectedInterview.candidate?.name || "Unknown"}
+                {selectedInterview.candidateName ||
+                  selectedInterview.candidate?.name ||
+                  "Unknown"}
               </p>
               <p>
                 <strong>Email:</strong>{" "}
-                {selectedInterview.candidateEmail || selectedInterview.candidate?.email || "N/A"}
+                {selectedInterview.candidateEmail ||
+                  selectedInterview.candidate?.email ||
+                  "N/A"}
               </p>
               <p>
                 <strong>College:</strong>{" "}
-                {selectedInterview.candidateCollege || selectedInterviewGroup?.college || "N/A"}
+                {selectedInterview.candidateCollege ||
+                  selectedInterviewGroup?.college ||
+                  "N/A"}
               </p>
             </div>
             <div>
@@ -1598,7 +1722,8 @@ const Interviews = () => {
           )}
 
           {/* Transcript Section */}
-          {(selectedInterview.transcript?.cleaned || selectedInterview.transcript) && (
+          {(selectedInterview.transcript?.cleaned ||
+            selectedInterview.transcript) && (
             <div className="mb-6">
               <h3 className="font-semibold mb-3 flex items-center">
                 <DocumentTextIcon className="h-5 w-5 mr-2" />
@@ -1606,31 +1731,72 @@ const Interviews = () => {
               </h3>
               <div className="bg-gray-50 p-4 rounded-lg max-h-64 overflow-y-auto">
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {selectedInterview.transcript?.cleaned || selectedInterview.transcript}
+                  {selectedInterview.transcript?.cleaned ||
+                    selectedInterview.transcript}
                 </p>
               </div>
-              {selectedInterview.analysis?.segments && selectedInterview.analysis.segments.length > 0 && (
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Timestamped Segments</h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {selectedInterview.analysis.segments.slice(0, 5).map((segment, index) => (
-                      <div key={index} className="flex items-start space-x-3 p-2 bg-white rounded border">
-                        <span className="text-xs text-blue-600 font-mono bg-blue-50 px-2 py-1 rounded">
-                          {Math.round(segment.start)}s
-                        </span>
-                        <span className="text-sm text-gray-700 flex-1">
-                          {segment.text}
-                        </span>
+
+              {/* Question & Answer Format */}
+              {(() => {
+                const qaItems = parseTranscriptToQA(
+                  selectedInterview.transcript?.cleaned ||
+                    selectedInterview.transcript
+                );
+                return (
+                  qaItems.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">
+                        Question & Answer Breakdown
+                      </h4>
+                      <div className="space-y-4 max-h-96 overflow-y-auto">
+                        {qaItems.slice(0, 10).map((qa, index) => (
+                          <div
+                            key={index}
+                            className="bg-white rounded-lg border border-gray-200 p-4"
+                          >
+                            <div className="mb-3">
+                              <div className="flex items-start space-x-2">
+                                <span className="inline-flex items-center justify-center w-6 h-6 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                                  Q
+                                </span>
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium text-gray-900 leading-relaxed">
+                                    {qa.question}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="ml-8">
+                              <div className="flex items-start space-x-2">
+                                <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                                  A
+                                </span>
+                                <div className="flex-1">
+                                  <p className="text-sm text-gray-700 leading-relaxed">
+                                    {qa.answer}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        {qaItems.length > 10 && (
+                          <p className="text-xs text-gray-500 italic text-center">
+                            Showing first 10 of {qaItems.length} question-answer
+                            pairs
+                          </p>
+                        )}
+                        {qaItems.length === 0 && (
+                          <p className="text-xs text-gray-500 italic text-center">
+                            Unable to parse transcript into Q&A format
+                          </p>
+                        )}
                       </div>
-                    ))}
-                    {selectedInterview.analysis.segments.length > 5 && (
-                      <p className="text-xs text-gray-500 italic">
-                        Showing first 5 of {selectedInterview.analysis.segments.length} segments
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
+                    </div>
+                  )
+                );
+              })()}
+
               <p className="text-xs text-gray-500 mt-2">
                 Note: Transcript generated using AI speech recognition
               </p>
