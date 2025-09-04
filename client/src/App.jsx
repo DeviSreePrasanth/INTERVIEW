@@ -10,7 +10,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import InterviewGroups from "./pages/InterviewGroups";
 import Interviews from "./pages/Interviews";
-import Reports from "./pages/Reports";
+import ProcessingPage from "./pages/ProcessingPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 
@@ -34,7 +34,10 @@ function App() {
                         element={<InterviewGroups />}
                       />
                       <Route path="/interviews" element={<Interviews />} />
-                      <Route path="/reports" element={<Reports />} />
+                      <Route
+                        path="/processing/:interviewId"
+                        element={<ProcessingPage />}
+                      />
                     </Routes>
                   </Layout>
                 </ProtectedRoute>

@@ -4,7 +4,11 @@ const path = require("path");
 const fs = require("fs");
 const Interview = require("../models/Interview");
 const Candidate = require("../models/Candidate");
+const InterviewGroup = require("../models/InterviewGroup");
 const auth = require("../middleware/auth");
+const {
+  updateInterviewGroupStats,
+} = require("../services/interviewGroupService");
 
 const router = express.Router();
 
@@ -30,19 +34,23 @@ const upload = multer({
   storage: storage,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB limit for video files
+    fieldSize: 10 * 1024 * 1024, // 10MB field size limit
   },
   fileFilter: (req, file, cb) => {
+    console.log(`Processing file: ${file.fieldname} - ${file.originalname}`);
+
     if (file.fieldname === "interviewFile") {
-      // Video/audio files for interview
-      const allowedTypes = /mp4|mp3|wav|avi|mov|m4a|aac/;
+      // Video/audio files for interview - expanded to include more formats
+      const allowedTypes = /mp4|mp3|wav|avi|mov|m4a|aac|ogg|flac|webm/;
       const extname = allowedTypes.test(
         path.extname(file.originalname).toLowerCase()
       );
-      const mimetype = allowedTypes.test(file.mimetype);
 
-      if (mimetype && extname) {
+      if (extname) {
+        console.log(`Accepted audio/video file: ${file.originalname}`);
         return cb(null, true);
       } else {
+        console.log(`Rejected file: ${file.originalname} - Invalid type`);
         cb(new Error("Only audio and video files are allowed for interview"));
       }
     } else if (file.fieldname === "questionsFile") {
@@ -53,8 +61,12 @@ const upload = multer({
       );
 
       if (extname) {
+        console.log(`Accepted document file: ${file.originalname}`);
         return cb(null, true);
       } else {
+        console.log(
+          `Rejected file: ${file.originalname} - Invalid document type`
+        );
         cb(
           new Error(
             "Only PDF, DOC, DOCX, TXT, JSON files are allowed for questions"
@@ -62,6 +74,7 @@ const upload = multer({
         );
       }
     } else {
+      console.log(`Unknown file field: ${file.fieldname}`);
       cb(new Error("Unknown file field"));
     }
   },
@@ -72,11 +85,35 @@ const upload = multer({
 // @access  Private
 router.get("/", auth, async (req, res) => {
   try {
-    const { page = 1, limit = 10, status, analysisStatus } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      analysisStatus,
+      interviewGroup,
+    } = req.query;
     const query = { interviewer: req.user._id };
 
     if (status) query.status = status;
     if (analysisStatus) query.analysisStatus = analysisStatus;
+
+    // Only add interviewGroup filter if it's a valid ObjectId
+    if (
+      interviewGroup &&
+      interviewGroup !== "undefined" &&
+      interviewGroup !== "null"
+    ) {
+      // Validate that it's a proper ObjectId format
+      if (/^[0-9a-fA-F]{24}$/.test(interviewGroup)) {
+        query.interviewGroup = interviewGroup;
+      } else {
+        console.log(
+          `Invalid interviewGroup ObjectId format: ${interviewGroup}`
+        );
+      }
+    }
+
+    console.log("Interview query:", query);
 
     const interviews = await Interview.find(query)
       .limit(limit * 1)
@@ -102,37 +139,38 @@ router.get("/", auth, async (req, res) => {
 // @access  Private
 router.get("/stats/summary", auth, async (req, res) => {
   try {
-    const totalInterviews = await Interview.countDocuments({
-      interviewer: req.user._id,
-    });
+    const baseQuery = { interviewer: req.user._id };
+    const totalInterviews = await Interview.countDocuments(baseQuery);
     const completedInterviews = await Interview.countDocuments({
-      interviewer: req.user._id,
+      ...baseQuery,
       status: "Completed",
     });
     const analyzedInterviews = await Interview.countDocuments({
-      interviewer: req.user._id,
+      ...baseQuery,
       analysisStatus: "Analyzed",
     });
     const pendingAnalysis = await Interview.countDocuments({
-      interviewer: req.user._id,
+      ...baseQuery,
       analysisStatus: { $in: ["Pending", "Processing"] },
     });
 
-    // Calculate average scores
-    const analyzedInterviewsData = await Interview.find({
-      interviewer: req.user._id,
+    // Instead of average score (removed scoring), compute average word count for analyzed transcripts
+    const analyzedWithTranscript = await Interview.find({
+      ...baseQuery,
       analysisStatus: "Analyzed",
-      "analysis.overall_score": { $exists: true },
-    });
+      "analysis.transcript": { $exists: true, $ne: null },
+    }).select("analysis.transcript");
 
-    let averageScore = 0;
-    if (analyzedInterviewsData.length > 0) {
-      const totalScore = analyzedInterviewsData.reduce(
-        (sum, interview) => sum + (interview.analysis.overall_score || 0),
-        0
-      );
-      averageScore =
-        Math.round((totalScore / analyzedInterviewsData.length) * 10) / 10;
+    let averageWordCount = 0;
+    if (analyzedWithTranscript.length > 0) {
+      const totalWords = analyzedWithTranscript.reduce((sum, i) => {
+        const wc = (i.analysis.transcript || "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean).length;
+        return sum + wc;
+      }, 0);
+      averageWordCount = Math.round(totalWords / analyzedWithTranscript.length);
     }
 
     res.json({
@@ -140,7 +178,7 @@ router.get("/stats/summary", auth, async (req, res) => {
       completedInterviews,
       analyzedInterviews,
       pendingAnalysis,
-      averageScore,
+      averageWordCount,
     });
   } catch (error) {
     console.error("Get interview stats error:", error);
@@ -177,12 +215,36 @@ router.get("/:id", auth, async (req, res) => {
 router.post(
   "/",
   auth,
-  upload.fields([
-    { name: "interviewFile", maxCount: 1 },
-    { name: "questionsFile", maxCount: 1 },
-  ]),
+  (req, res, next) => {
+    // Add error handling middleware for multer
+    upload.fields([
+      { name: "interviewFile", maxCount: 1 },
+      { name: "questionsFile", maxCount: 1 },
+    ])(req, res, (err) => {
+      if (err) {
+        console.error("Multer error:", err);
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "File too large. Maximum size is 100MB.",
+          });
+        }
+        return res.status(400).json({
+          message: err.message || "File upload error",
+        });
+      }
+      next();
+    });
+  },
   async (req, res) => {
     try {
+      console.log("=== Creating new interview ===");
+      console.log(
+        "Files received:",
+        req.files ? Object.keys(req.files) : "No files"
+      );
+      console.log("Body received:", Object.keys(req.body));
+      console.log("User ID:", req.user?._id);
+
       const {
         candidateName,
         candidateEmail,
@@ -197,7 +259,27 @@ router.post(
         interviewGroup,
         notes,
         questions,
+        interviewerName, // Add this field
       } = req.body;
+
+      console.log("Extracted fields:", {
+        candidateName,
+        candidateEmail,
+        position: position || "Interview Position",
+        department: department || "General",
+      });
+
+      // Validate required fields
+      if (!candidateName || !candidateEmail) {
+        console.log("Validation failed: Missing required fields");
+        return res.status(400).json({
+          message: "Candidate name and email are required",
+        });
+      }
+
+      console.log("=== Creating/Finding candidate ===");
+
+      console.log("=== Creating/Finding candidate ===");
 
       // Create or find candidate
       let candidate = await Candidate.findOne({
@@ -206,11 +288,12 @@ router.post(
       });
 
       if (!candidate) {
+        console.log("Creating new candidate...");
         candidate = new Candidate({
           name: candidateName,
           email: candidateEmail,
           phone: candidatePhone,
-          role: position,
+          role: position || "Interview Position",
           college: candidateCollege,
           department: candidateDepartment,
           batch: candidateBatch,
@@ -221,7 +304,14 @@ router.post(
           createdBy: req.user._id,
         });
         await candidate.save();
+        console.log("New candidate created:", candidate._id);
+      } else {
+        console.log("Found existing candidate:", candidate._id);
       }
+
+      console.log("=== Processing questions ===");
+
+      console.log("=== Processing questions ===");
 
       // Parse questions if provided as string
       let parsedQuestions = [];
@@ -229,10 +319,16 @@ router.post(
         try {
           parsedQuestions =
             typeof questions === "string" ? JSON.parse(questions) : questions;
+          console.log("Questions parsed successfully:", parsedQuestions.length);
         } catch (error) {
+          console.log("Questions parsing failed:", error.message);
           return res.status(400).json({ message: "Invalid questions format" });
         }
       }
+
+      console.log("=== Creating interview object ===");
+
+      console.log("=== Creating interview object ===");
 
       // Create interview object
       const interviewData = {
@@ -240,16 +336,33 @@ router.post(
         interviewer: req.user._id,
         interviewGroup: interviewGroup || null,
         questions: parsedQuestions,
-        position,
-        department,
-        notes,
+        position: position || "Interview Position",
+        department: department || "General",
+        notes: notes || "",
         status: "Completed",
         analysisStatus: "Pending",
       };
 
+      console.log("Interview data prepared:", {
+        candidateId: interviewData.candidate,
+        interviewerId: interviewData.interviewer,
+        position: interviewData.position,
+        hasQuestions: parsedQuestions.length > 0,
+      });
+
+      console.log("=== Processing files ===");
+
+      console.log("=== Processing files ===");
+
       // Add interview file information if uploaded
       if (req.files && req.files.interviewFile) {
         const file = req.files.interviewFile[0];
+        console.log(
+          "Interview file found:",
+          file.originalname,
+          "Size:",
+          file.size
+        );
         interviewData.interviewFile = {
           filename: file.filename,
           originalname: file.originalname,
@@ -258,11 +371,14 @@ router.post(
           path: file.path,
           url: `/uploads/${file.filename}`,
         };
+      } else {
+        console.log("No interview file uploaded");
       }
 
       // Add questions file information if uploaded
       if (req.files && req.files.questionsFile) {
         const file = req.files.questionsFile[0];
+        console.log("Questions file found:", file.originalname);
         interviewData.questionsFile = {
           filename: file.filename,
           originalname: file.originalname,
@@ -272,6 +388,8 @@ router.post(
           url: `/uploads/${file.filename}`,
         };
       }
+
+      console.log("=== Saving interview to database ===");
 
       const interview = new Interview(interviewData);
       await interview.save();
@@ -290,63 +408,82 @@ router.post(
         },
       ]);
 
-      // Mock AI analysis (replace with actual AI service call)
-      setTimeout(async () => {
-        try {
-          const analysisResult = {
-            technical_score: Math.round((Math.random() * 3 + 7) * 10) / 10, // 7-10 range
-            communication_score: Math.round((Math.random() * 3 + 7) * 10) / 10,
-            confidence_score: Math.round((Math.random() * 3 + 7) * 10) / 10,
-            transcript: "Mock transcript of the interview...",
-            questionAnalysis: parsedQuestions.map((q) => ({
-              question: q.question,
-              candidateAnswer: "Mock candidate answer...",
-              expectedAnswer: q.expectedAnswer,
-              score: Math.round((Math.random() * 3 + 7) * 10) / 10,
-              feedback: "Mock feedback for this question...",
-            })),
-            communicationMetrics: {
-              grammarScore: Math.round((Math.random() * 2 + 8) * 10) / 10,
-              clarityScore: Math.round((Math.random() * 2 + 8) * 10) / 10,
-              fillerWords: Math.floor(Math.random() * 20 + 5),
-              averageResponseTime:
-                Math.round((Math.random() * 3 + 2) * 10) / 10,
-            },
-            feedback: "Overall mock feedback for the interview...",
-          };
+      // Start processing immediately if audio file is uploaded
+      if (interviewData.interviewFile && interviewData.interviewFile.path) {
+        console.log("=== Starting automatic speech-to-text processing ===");
 
-          // Calculate overall score
-          analysisResult.overall_score =
-            Math.round(
-              ((analysisResult.technical_score +
-                analysisResult.communication_score +
-                analysisResult.confidence_score) /
-                3) *
-                10
-            ) / 10;
+        // Update status to processing immediately
+        await Interview.findByIdAndUpdate(interview._id, {
+          analysisStatus: "Processing",
+        });
 
-          // Update interview with analysis
-          await Interview.findByIdAndUpdate(interview._id, {
-            analysis: analysisResult,
-            analysisStatus: "Analyzed",
-          });
+        // Audio file uploaded successfully - no processing needed
+        console.log("Interview audio file saved successfully");
+      } else {
+        // No audio file uploaded, create simple placeholder
+        setTimeout(async () => {
+          try {
+            const analysisResult = {
+              transcript: "No audio file provided for transcription.",
+              metadata: {
+                processingTime: new Date().toISOString(),
+              },
+              communicationMetrics: {
+                wordsPerMinute: 0,
+                totalWords: 0,
+                duration: 0,
+                durationSeconds: 0,
+              },
+            };
 
-          console.log(`Analysis completed for interview ${interview._id}`);
-        } catch (error) {
-          console.error("Analysis simulation error:", error);
-          await Interview.findByIdAndUpdate(interview._id, {
-            analysisStatus: "Failed",
-          });
-        }
-      }, 3000); // Simulate 3 second processing time
+            await Interview.findByIdAndUpdate(interview._id, {
+              analysis: analysisResult,
+              analysisStatus: "Analyzed",
+            });
 
+            console.log(
+              `Placeholder analysis completed for interview ${interview._id}`
+            );
+          } catch (error) {
+            console.error("Placeholder analysis error:", error);
+            await Interview.findByIdAndUpdate(interview._id, {
+              analysisStatus: "Failed",
+            });
+          }
+        }, 2000);
+      }
+
+      console.log("=== Interview creation successful ===");
       res.status(201).json({
         message: "Interview created successfully",
         interview,
       });
     } catch (error) {
-      console.error("Create interview error:", error);
-      res.status(500).json({ message: "Server error", error: error.message });
+      console.error("=== Create interview error ===");
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+
+      // Return more specific error information
+      if (error.name === "ValidationError") {
+        return res.status(400).json({
+          message: "Validation error",
+          details: error.message,
+        });
+      }
+
+      if (error.name === "MongoError" || error.name === "MongooseError") {
+        return res.status(500).json({
+          message: "Database error",
+          details: error.message,
+        });
+      }
+
+      res.status(500).json({
+        message: "Server error",
+        error: error.message,
+        details:
+          process.env.NODE_ENV === "development" ? error.stack : undefined,
+      });
     }
   }
 );
@@ -412,6 +549,75 @@ router.delete("/:id", auth, async (req, res) => {
     res.json({ message: "Interview deleted successfully" });
   } catch (error) {
     console.error("Delete interview error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   GET /api/interviews/:id/report
+// @desc    Download interview report PDF
+// @access  Private
+router.get("/:id/report", auth, async (req, res) => {
+  try {
+    const interview = await Interview.findOne({
+      _id: req.params.id,
+      interviewer: req.user._id,
+    });
+
+    if (!interview) {
+      return res.status(404).json({ message: "Interview not found" });
+    }
+
+    if (!interview.reportFile || !interview.reportFile.path) {
+      return res.status(404).json({
+        message: "Report not found. Please process the interview first.",
+      });
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(interview.reportFile.path)) {
+      return res
+        .status(404)
+        .json({ message: "Report file not found on server" });
+    }
+
+    // Set headers for PDF download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${interview.reportFile.filename}"`
+    );
+
+    // Stream the file
+    const fileStream = fs.createReadStream(interview.reportFile.path);
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error("Download report error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// @route   GET /api/interviews/:id/status
+// @desc    Get processing status of an interview
+// @access  Private
+router.get("/:id/status", auth, async (req, res) => {
+  try {
+    const interview = await Interview.findOne({
+      _id: req.params.id,
+      interviewer: req.user._id,
+    }).select("analysisStatus analysisError reportFile");
+
+    if (!interview) {
+      return res.status(404).json({ message: "Interview not found" });
+    }
+
+    res.json({
+      analysisStatus: interview.analysisStatus,
+      hasReport: !!interview.reportFile,
+      reportUrl: interview.reportFile ? interview.reportFile.url : null,
+      error: interview.analysisError || null,
+    });
+  } catch (error) {
+    console.error("Get status error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });

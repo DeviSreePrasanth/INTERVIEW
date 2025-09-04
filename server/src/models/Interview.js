@@ -27,71 +27,6 @@ const questionSchema = new mongoose.Schema({
   },
 });
 
-const analysisResultSchema = new mongoose.Schema({
-  question: {
-    type: String,
-    required: true,
-  },
-  expectedAnswer: {
-    type: String,
-    required: true,
-  },
-  candidateAnswer: {
-    type: String,
-    trim: true,
-  },
-  score: {
-    type: Number,
-    min: 0,
-    max: 100,
-    default: 0,
-  },
-  feedback: {
-    type: String,
-    trim: true,
-  },
-});
-
-const analysisSchema = new mongoose.Schema({
-  technical_score: {
-    type: Number,
-    min: 0,
-    max: 10,
-  },
-  communication_score: {
-    type: Number,
-    min: 0,
-    max: 10,
-  },
-  confidence_score: {
-    type: Number,
-    min: 0,
-    max: 10,
-  },
-  overall_score: {
-    type: Number,
-    min: 0,
-    max: 10,
-  },
-  transcript: {
-    type: String,
-  },
-  questionResponses: [analysisResultSchema],
-  communicationMetrics: {
-    grammarScore: Number,
-    clarityScore: Number,
-    fillerWords: Number,
-    averageResponseTime: Number,
-  },
-  feedback: {
-    type: String,
-  },
-  processed_at: {
-    type: Date,
-    default: Date.now,
-  },
-});
-
 const interviewSchema = new mongoose.Schema(
   {
     candidate: {
@@ -107,7 +42,7 @@ const interviewSchema = new mongoose.Schema(
     interviewGroup: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "InterviewGroup",
-      required: true,
+      required: false, // Make this optional
     },
     questions: [questionSchema],
     questionsFile: {
@@ -132,20 +67,6 @@ const interviewSchema = new mongoose.Schema(
       enum: ["Scheduled", "In Progress", "Completed"],
       default: "Completed",
     },
-    analysisStatus: {
-      type: String,
-      enum: ["Pending", "Processing", "Analyzed", "Failed"],
-      default: "Pending",
-    },
-    interviewFile: {
-      filename: String,
-      originalname: String,
-      mimetype: String,
-      size: Number,
-      path: String,
-      url: String,
-    },
-    analysis: analysisSchema,
     notes: {
       type: String,
       trim: true,
@@ -160,8 +81,14 @@ const interviewSchema = new mongoose.Schema(
   }
 );
 
-// Ensure one interview per candidate per group
-interviewSchema.index({ candidate: 1, interviewGroup: 1 }, { unique: true });
+// Create indexes for performance (no unique constraint to allow multiple interviews per candidate)
+interviewSchema.index(
+  { candidate: 1, interviewGroup: 1 },
+  { name: "candidate_interviewGroup_lookup" }
+);
+interviewSchema.index({ candidate: 1 }, { name: "candidate_lookup" });
+interviewSchema.index({ interviewer: 1 }, { name: "interviewer_lookup" });
+interviewSchema.index({ interviewDate: -1 }, { name: "date_lookup" });
 
 // Populate candidate and interviewer by default
 interviewSchema.pre(/^find/, function (next) {

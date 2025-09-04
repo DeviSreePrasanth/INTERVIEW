@@ -142,20 +142,20 @@ const InterviewGroups = () => {
 
   const navigateToInterviews = (group) => {
     // Store the current group context in localStorage for the Interviews page
-    localStorage.setItem(
-      "selectedInterviewGroup",
-      JSON.stringify({
-        id: group._id,
-        name: group.name,
-        college: group.college,
-        department: group.department,
-        position: group.position,
-        batch: group.batch,
-      })
-    );
+    const groupData = {
+      _id: group._id,
+      id: group._id,
+      name: group.name,
+      college: group.college,
+      department: group.department,
+      position: group.position,
+      batch: group.batch,
+    };
 
-    // Navigate to interviews page with college parameter
-    navigate(`/interviews?college=${encodeURIComponent(group.college)}`);
+    localStorage.setItem("selectedInterviewGroup", JSON.stringify(groupData));
+
+    // Navigate to interviews page with group parameter
+    navigate(`/interviews?group=${group._id}`);
   };
 
   const deleteGroup = async (groupId) => {
@@ -211,170 +211,201 @@ const InterviewGroups = () => {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Interview Groups</h1>
-          <p className="text-gray-600">
-            Manage batch interviews and group evaluations
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center space-x-2"
-        >
-          <PlusIcon className="h-5 w-5" />
-          <span>Create Group</span>
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Status
-            </label>
-            <select
-              value={filters.status}
-              onChange={(e) =>
-                setFilters({ ...filters, status: e.target.value })
-              }
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="">All Statuses</option>
-              <option value="Draft">Draft</option>
-              <option value="Active">Active</option>
-              <option value="Completed">Completed</option>
-              <option value="Archived">Archived</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              College
-            </label>
-            <input
-              type="text"
-              value={filters.college}
-              onChange={(e) =>
-                setFilters({ ...filters, college: e.target.value })
-              }
-              placeholder="Filter by college"
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Position
-            </label>
-            <input
-              type="text"
-              value={filters.position}
-              onChange={(e) =>
-                setFilters({ ...filters, position: e.target.value })
-              }
-              placeholder="Filter by position"
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Groups Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {groups.map((group) => (
-          <div
-            key={group._id}
-            className="bg-white rounded-lg shadow hover:shadow-md transition-shadow"
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {group.name}
-                  </h3>
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                      group.status
-                    )}`}
-                  >
-                    {group.status}
-                  </span>
-                </div>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => navigateToInterviews(group)}
-                    className="text-blue-600 hover:text-blue-700"
-                    title="Create Interview"
-                  >
-                    <PlusIcon className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => deleteGroup(group._id)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <TrashIcon className="h-5 w-5" />
-                  </button>
+    <>
+      {/* Main Interview Groups Interface */}
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 -mx-4 sm:-mx-6 md:-mx-8 -my-6">
+        {/* Professional Header */}
+        <div className="bg-white shadow-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              {/* Title Section */}
+              <div className="flex-1 flex justify-center">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Interview Groups
+                  </h1>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Manage batch interviews and group evaluations
+                  </p>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center text-sm text-gray-600">
-                  <BuildingOfficeIcon className="h-4 w-4 mr-2" />
-                  <span>{group.college || "No college specified"}</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <AcademicCapIcon className="h-4 w-4 mr-2" />
-                  <span>{group.position}</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <UserGroupIcon className="h-4 w-4 mr-2" />
-                  <span>
-                    {group.currentCandidates}/{group.maxCandidates} candidates
-                  </span>
-                </div>
-                {group.interviewDate && (
-                  <div className="flex items-center text-sm text-gray-600">
-                    <CalendarIcon className="h-4 w-4 mr-2" />
-                    <span>
-                      {new Date(group.interviewDate).toLocaleDateString()}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 flex justify-between items-center">
-                <div className="text-sm text-gray-500">
-                  {group.statistics?.analyzedInterviews || 0} analyzed
-                </div>
-                <div className="text-sm font-medium text-blue-600">
-                  Avg: {group.statistics?.averageScore?.toFixed(1) || "0.0"}
-                </div>
+              {/* Action Button */}
+              <div className="flex items-center">
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                >
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  Create Group
+                </button>
               </div>
             </div>
           </div>
-        ))}
-      </div>
-
-      {groups.length === 0 && !loading && (
-        <div className="text-center py-12">
-          <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No interview groups found
-          </h3>
-          <p className="text-gray-600 mb-4">
-            You haven't created any interview groups yet. Create your first
-            group to get started.
-          </p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            Create Interview Group
-          </button>
         </div>
-      )}
+
+        {/* Content Area */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Status
+                </label>
+                <select
+                  value={filters.status}
+                  onChange={(e) =>
+                    setFilters({ ...filters, status: e.target.value })
+                  }
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Active">Active</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Archived">Archived</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  College
+                </label>
+                <input
+                  type="text"
+                  value={filters.college}
+                  onChange={(e) =>
+                    setFilters({ ...filters, college: e.target.value })
+                  }
+                  placeholder="Filter by college"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Position
+                </label>
+                <input
+                  type="text"
+                  value={filters.position}
+                  onChange={(e) =>
+                    setFilters({ ...filters, position: e.target.value })
+                  }
+                  placeholder="Filter by position"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Groups Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {groups.map((group) => (
+              <div
+                key={group._id}
+                className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
+              >
+                <div className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {group.name}
+                      </h3>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                          group.status
+                        )}`}
+                      >
+                        {group.status}
+                      </span>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => deleteGroup(group._id)}
+                        className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Group"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <BuildingOfficeIcon className="h-4 w-4 mr-2" />
+                      <span>{group.college || "No college specified"}</span>
+                    </div>
+                    <div className="flex items-center text-sm text-gray-600">
+                      <AcademicCapIcon className="h-4 w-4 mr-2" />
+                      <span>{group.position}</span>
+                    </div>
+                    <div className="flex items-center text-sm text-gray-600">
+                      <UserGroupIcon className="h-4 w-4 mr-2" />
+                      <span>
+                        {group.currentCandidates}/{group.maxCandidates}{" "}
+                        candidates
+                      </span>
+                    </div>
+                    {group.interviewDate && (
+                      <div className="flex items-center text-sm text-gray-600">
+                        <CalendarIcon className="h-4 w-4 mr-2" />
+                        <span>
+                          {new Date(group.interviewDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex justify-between items-center">
+                    <div className="text-sm text-gray-500">
+                      {group.statistics?.analyzedInterviews || 0} analyzed
+                    </div>
+                    <div className="text-sm font-medium text-blue-600">
+                      Avg: {group.statistics?.averageScore?.toFixed(1) || "0.0"}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() => navigateToInterviews(group)}
+                      className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 transition-all duration-200 shadow-sm"
+                    >
+                      <VideoCameraIcon className="h-4 w-4" />
+                      <span>Manage Interviews</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Professional Empty State */}
+          {groups.length === 0 && !loading && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="text-center py-16 px-6">
+                <div className="mx-auto h-24 w-24 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center mb-6">
+                  <UserGroupIcon className="h-12 w-12 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                  No interview groups found
+                </h3>
+                <p className="text-gray-600 max-w-md mx-auto mb-8 leading-relaxed">
+                  You haven't created any interview groups yet. Create your
+                  first group to get started with organizing and managing
+                  interviews.
+                </p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Create Interview Group
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Create Group Modal */}
       {showCreateModal && (
@@ -555,7 +586,7 @@ const InterviewGroups = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

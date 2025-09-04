@@ -11,7 +11,6 @@ dotenv.config();
 const authRoutes = require("./src/routes/auth");
 const candidateRoutes = require("./src/routes/candidates");
 const interviewRoutes = require("./src/routes/interviews");
-const reportRoutes = require("./src/routes/reports");
 const interviewGroupRoutes = require("./src/routes/interviewGroups");
 const dashboardRoutes = require("./src/routes/dashboard");
 
@@ -29,7 +28,6 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/auth", authRoutes);
 app.use("/api/candidates", candidateRoutes);
 app.use("/api/interviews", interviewRoutes);
-app.use("/api/reports", reportRoutes);
 app.use("/api/interview-groups", interviewGroupRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 

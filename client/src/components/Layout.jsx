@@ -16,7 +16,6 @@ import {
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: HomeIcon },
   { name: "Interview Groups", href: "/interview-groups", icon: UserGroupIcon },
-  { name: "Reports", href: "/reports", icon: DocumentChartBarIcon },
 ];
 
 function classNames(...classes) {
