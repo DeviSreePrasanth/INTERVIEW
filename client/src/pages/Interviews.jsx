@@ -59,6 +59,15 @@ const Interviews = () => {
   const [transcript, setTranscript] = useState("");
   const [transcriptStatus, setTranscriptStatus] = useState("idle");
 
+  // Debug panel state
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [debugInfo, setDebugInfo] = useState({
+    apiCalls: [],
+    errors: [],
+    transcriptStatus: null,
+    lastUpdate: null
+  });
+
   // Form data
   const [newInterview, setNewInterview] = useState({
     candidateName: "",
@@ -1802,6 +1811,19 @@ const Interviews = () => {
                       </button>
                     </>
                   )}
+                  
+                  {/* Debug Toggle Button */}
+                  <button
+                    onClick={() => setShowDebugPanel(!showDebugPanel)}
+                    className={`inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg shadow-sm transition-all duration-200 ${
+                      showDebugPanel 
+                        ? 'text-white bg-gray-800 hover:bg-gray-900' 
+                        : 'text-gray-700 bg-white hover:bg-gray-50'
+                    }`}
+                    title="Toggle Debug Panel"
+                  >
+                    <BoltIcon className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
 
