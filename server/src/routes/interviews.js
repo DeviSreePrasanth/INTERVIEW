@@ -281,6 +281,31 @@ router.post(
 
       console.log("=== Creating/Finding candidate ===");
 
+      // Auto-fill candidate educational info from interview group if not explicitly provided
+      let effectiveCollege = candidateCollege;
+      let effectiveDepartment = candidateDepartment;
+      let effectiveBatch = candidateBatch;
+      if (
+        interviewGroup &&
+        (!effectiveCollege || !effectiveDepartment || !effectiveBatch)
+      ) {
+        try {
+          const grp = await InterviewGroup.findById(interviewGroup).select(
+            "college department batch position"
+          );
+          if (grp) {
+            if (!effectiveCollege) effectiveCollege = grp.college;
+            if (!effectiveDepartment) effectiveDepartment = grp.department;
+            if (!effectiveBatch) effectiveBatch = grp.batch;
+          }
+        } catch (igErr) {
+          console.warn(
+            "Could not load interview group for autofill:",
+            igErr.message
+          );
+        }
+      }
+
       // Create or find candidate
       let candidate = await Candidate.findOne({
         email: candidateEmail,
@@ -294,9 +319,9 @@ router.post(
           email: candidateEmail,
           phone: candidatePhone,
           role: position || "Interview Position",
-          college: candidateCollege,
-          department: candidateDepartment,
-          batch: candidateBatch,
+          college: effectiveCollege,
+          department: effectiveDepartment,
+          batch: effectiveBatch,
           cgpa: candidateCGPA ? parseFloat(candidateCGPA) : undefined,
           skills: candidateSkills
             ? candidateSkills.split(",").map((s) => s.trim())
@@ -394,6 +419,17 @@ router.post(
       const interview = new Interview(interviewData);
       await interview.save();
 
+      // Update the interview group's current candidates count
+      if (interviewData.interviewGroup) {
+        const interviewCount = await Interview.countDocuments({
+          interviewGroup: interviewData.interviewGroup,
+        });
+        await InterviewGroup.findByIdAndUpdate(interviewData.interviewGroup, {
+          currentCandidates: interviewCount,
+        });
+        console.log(`Updated interview group candidate count to: ${interviewCount}`);
+      }
+
       // Populate the created interview
       await interview.populate([
         {
@@ -408,51 +444,69 @@ router.post(
         },
       ]);
 
-      // Start processing immediately if audio file is uploaded
+      // Start asynchronous transcription if audio/video provided
       if (interviewData.interviewFile && interviewData.interviewFile.path) {
-        console.log("=== Starting automatic speech-to-text processing ===");
+        console.log("=== Queueing transcription job ===");
+        const filePath = interviewData.interviewFile.path;
 
-        // Update status to processing immediately
+        // Immediately set status to Processing
         await Interview.findByIdAndUpdate(interview._id, {
           analysisStatus: "Processing",
         });
 
-        // Audio file uploaded successfully - no processing needed
-        console.log("Interview audio file saved successfully");
-      } else {
-        // No audio file uploaded, create simple placeholder
-        setTimeout(async () => {
+        // Defer heavy processing so response returns quickly
+        setImmediate(async () => {
+          console.log("[Transcription] Started for interview", interview._id);
           try {
-            const analysisResult = {
-              transcript: "No audio file provided for transcription.",
-              metadata: {
-                processingTime: new Date().toISOString(),
-              },
-              communicationMetrics: {
-                wordsPerMinute: 0,
-                totalWords: 0,
-                duration: 0,
-                durationSeconds: 0,
-              },
-            };
-
-            await Interview.findByIdAndUpdate(interview._id, {
-              analysis: analysisResult,
-              analysisStatus: "Analyzed",
+            const {
+              transcribeFile,
+            } = require("../services/transcriptionService");
+            const result = await transcribeFile(filePath, {
+              modelName: process.env.WHISPER_MODEL || "base.en",
+              language: "en",
             });
 
-            console.log(
-              `Placeholder analysis completed for interview ${interview._id}`
-            );
-          } catch (error) {
-            console.error("Placeholder analysis error:", error);
+            await Interview.findByIdAndUpdate(interview._id, {
+              transcript: result.text,
+              analysisStatus: "Analyzed",
+              analysis: {
+                transcript: result.text,
+                segments: result.segments,
+                communicationMetrics: result.metrics,
+                metadata: result.metadata,
+              },
+            });
+            console.log("[Transcription] Completed for", interview._id);
+          } catch (err) {
+            console.error("[Transcription] Failed:", err.message);
             await Interview.findByIdAndUpdate(interview._id, {
               analysisStatus: "Failed",
+              analysisError: err.message,
             });
           }
-        }, 2000);
+        });
+      } else {
+        // No audio provided: finalize quickly with placeholder
+        await Interview.findByIdAndUpdate(interview._id, {
+          analysisStatus: "Analyzed",
+          analysis: {
+            transcript: "No audio file provided for transcription.",
+            segments: [],
+            communicationMetrics: {
+              wordsPerMinute: 0,
+              totalWords: 0,
+              duration: 0,
+              durationSeconds: 0,
+            },
+            metadata: { createdAt: new Date() },
+          },
+        });
       }
 
+      // If audio file present and transcription queued, reflect Processing status in response
+      if (interviewData.interviewFile && interviewData.interviewFile.path) {
+        interview.analysisStatus = "Processing";
+      }
       console.log("=== Interview creation successful ===");
       res.status(201).json({
         message: "Interview created successfully",
@@ -535,6 +589,9 @@ router.delete("/:id", auth, async (req, res) => {
       return res.status(404).json({ message: "Interview not found" });
     }
 
+    // Store the interview group ID before deletion
+    const interviewGroupId = interview.interviewGroup;
+
     // Delete associated file if exists
     if (interview.interviewFile && interview.interviewFile.path) {
       try {
@@ -545,6 +602,17 @@ router.delete("/:id", auth, async (req, res) => {
     }
 
     await Interview.findByIdAndDelete(req.params.id);
+
+    // Update the interview group's current candidates count after deletion
+    if (interviewGroupId) {
+      const interviewCount = await Interview.countDocuments({
+        interviewGroup: interviewGroupId,
+      });
+      await InterviewGroup.findByIdAndUpdate(interviewGroupId, {
+        currentCandidates: interviewCount,
+      });
+      console.log(`Updated interview group candidate count to: ${interviewCount} after deletion`);
+    }
 
     res.json({ message: "Interview deleted successfully" });
   } catch (error) {
@@ -604,7 +672,9 @@ router.get("/:id/status", auth, async (req, res) => {
     const interview = await Interview.findOne({
       _id: req.params.id,
       interviewer: req.user._id,
-    }).select("analysisStatus analysisError reportFile");
+    }).select(
+      "analysisStatus analysisError reportFile transcript analysis.transcript"
+    );
 
     if (!interview) {
       return res.status(404).json({ message: "Interview not found" });
@@ -612,6 +682,8 @@ router.get("/:id/status", auth, async (req, res) => {
 
     res.json({
       analysisStatus: interview.analysisStatus,
+      transcript:
+        interview.transcript || interview.analysis?.transcript || null,
       hasReport: !!interview.reportFile,
       reportUrl: interview.reportFile ? interview.reportFile.url : null,
       error: interview.analysisError || null,

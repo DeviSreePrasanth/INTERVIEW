@@ -53,6 +53,15 @@ const interviewSchema = new mongoose.Schema(
       path: String,
       url: String,
     },
+    // Uploaded interview audio/video file metadata
+    interviewFile: {
+      filename: String,
+      originalname: String,
+      mimetype: String,
+      size: Number,
+      path: String,
+      url: String,
+    },
     position: {
       type: String,
       required: true,
@@ -74,6 +83,57 @@ const interviewSchema = new mongoose.Schema(
     interviewDate: {
       type: Date,
       default: Date.now,
+    },
+    // Simple transcript field for quick access (flat string)
+    transcript: {
+      type: String,
+      trim: true,
+    },
+    // Processing state for automated analysis / transcription
+    analysisStatus: {
+      type: String,
+      enum: ["Pending", "Processing", "Analyzed", "Failed"],
+      default: "Pending",
+      index: true,
+    },
+    analysisError: {
+      type: String,
+      trim: true,
+    },
+    // Rich analysis object (extensible)
+    analysis: {
+      transcript: { type: String, trim: true },
+      segments: [
+        new mongoose.Schema(
+          {
+            start: Number,
+            end: Number,
+            text: String,
+          },
+          { _id: false }
+        ),
+      ],
+      communicationMetrics: {
+        wordsPerMinute: Number,
+        totalWords: Number,
+        duration: Number, // in seconds
+        durationSeconds: Number, // alias / backward compatibility
+      },
+      metadata: {
+        processingTimeMs: Number,
+        model: String,
+        language: String,
+        createdAt: Date,
+      },
+    },
+    // Optional generated report file
+    reportFile: {
+      filename: String,
+      originalname: String,
+      mimetype: String,
+      size: Number,
+      path: String,
+      url: String,
     },
   },
   {

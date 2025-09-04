@@ -24,10 +24,29 @@ router.get("/", auth, async (req, res) => {
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
+    // Get interview counts for each group
+    const groupsWithCounts = await Promise.all(
+      interviewGroups.map(async (group) => {
+        const interviewCount = await Interview.countDocuments({
+          interviewGroup: group._id,
+        });
+        
+        // Update the currentCandidates field with the actual interview count
+        await InterviewGroup.findByIdAndUpdate(group._id, {
+          currentCandidates: interviewCount,
+        });
+        
+        return {
+          ...group.toObject(),
+          currentCandidates: interviewCount,
+        };
+      })
+    );
+
     const total = await InterviewGroup.countDocuments(query);
 
     res.json({
-      interviewGroups,
+      interviewGroups: groupsWithCounts,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total,
@@ -56,8 +75,15 @@ router.get("/:id", auth, async (req, res) => {
       .populate("candidate")
       .sort({ createdAt: -1 });
 
+    // Update the currentCandidates field with the actual interview count
+    const updatedGroup = await InterviewGroup.findByIdAndUpdate(
+      req.params.id,
+      { currentCandidates: interviews.length },
+      { new: true }
+    ).populate("recruiterId", "name email");
+
     res.json({
-      interviewGroup,
+      interviewGroup: updatedGroup,
       interviews,
       totalInterviews: interviews.length,
     });
