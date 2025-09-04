@@ -17,6 +17,13 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ExclamationTriangleIcon,
+  PlayIcon,
+  DocumentTextIcon,
+  MicrophoneIcon,
+  CpuChipIcon,
+  ArrowRightIcon,
+  UserIcon,
+  PlusIcon,
 } from "@heroicons/react/24/outline";
 import {
   BarChart,
@@ -35,9 +42,11 @@ import {
   Area,
 } from "recharts";
 import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalCandidates: 0,
@@ -46,6 +55,8 @@ const Dashboard = () => {
     activeGroups: 0,
     completedInterviews: 0,
     analyzedInterviews: 0,
+    pendingAnalysis: 0,
+    processingInterviews: 0,
     averageScore: 0,
     recentCandidates: 0,
     recentInterviews: 0,
@@ -73,23 +84,19 @@ const Dashboard = () => {
       const [
         statsResponse,
         recentInterviewsResponse,
-        scoreTrendsResponse,
         groupsSummaryResponse,
         statusDistributionResponse,
       ] = await Promise.all([
-        fetch("http://localhost:5000/api/dashboard/stats", {
+        fetch("/api/dashboard/stats", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("http://localhost:5000/api/dashboard/recent-interviews", {
+        fetch("/api/dashboard/recent-interviews", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("http://localhost:5000/api/dashboard/score-trends", {
+        fetch("/api/dashboard/interview-groups-summary", {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("http://localhost:5000/api/dashboard/interview-groups-summary", {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch("http://localhost:5000/api/dashboard/status-distribution", {
+        fetch("/api/dashboard/status-distribution", {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
@@ -106,6 +113,8 @@ const Dashboard = () => {
           activeGroups: 0,
           completedInterviews: 0,
           analyzedInterviews: 0,
+          pendingAnalysis: 0,
+          processingInterviews: 0,
           averageScore: 0,
           recentCandidates: 0,
           recentInterviews: 0,
@@ -119,12 +128,7 @@ const Dashboard = () => {
 
       if (recentInterviewsResponse.ok) {
         const recentData = await recentInterviewsResponse.json();
-        setRecentInterviews(recentData);
-      }
-
-      if (scoreTrendsResponse.ok) {
-        const trendsData = await scoreTrendsResponse.json();
-        setScoreTrends(trendsData);
+        setRecentInterviews(recentData.recentInterviews || recentData);
       }
 
       if (groupsSummaryResponse.ok) {
@@ -143,48 +147,16 @@ const Dashboard = () => {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status?.toLowerCase()) {
-      case "completed":
-        return "text-green-600 bg-green-100";
-      case "active":
-        return "text-blue-600 bg-blue-100";
-      case "pending":
-        return "text-yellow-600 bg-yellow-100";
-      case "draft":
-        return "text-gray-600 bg-gray-100";
-      case "cancelled":
-      case "failed":
-        return "text-red-600 bg-red-100";
-      default:
-        return "text-gray-600 bg-gray-100";
-    }
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 8) return "text-green-600";
-    if (score >= 6) return "text-yellow-600";
-    return "text-red-600";
-  };
-
   const statCards = [
-    {
-      name: "Total Candidates",
-      value: stats.totalCandidates || 0,
-      icon: UsersIcon,
-      color: "bg-gradient-to-r from-blue-500 to-blue-600",
-      change: `+${stats.candidateGrowth || 0}%`,
-      changeType: (stats.candidateGrowth || 0) >= 0 ? "increase" : "decrease",
-      description: "All registered candidates",
-    },
     {
       name: "Interview Groups",
       value: stats.totalInterviewGroups || 0,
       icon: UserGroupIcon,
-      color: "bg-gradient-to-r from-purple-500 to-purple-600",
+      color: "bg-gradient-to-r from-blue-500 to-blue-600",
       change: `${stats.activeGroups || 0} active`,
       changeType: "neutral",
       description: "Total groups created",
+      action: () => navigate("/interview-groups"),
     },
     {
       name: "Total Interviews",
@@ -194,28 +166,41 @@ const Dashboard = () => {
       change: `+${stats.interviewGrowth || 0}%`,
       changeType: (stats.interviewGrowth || 0) >= 0 ? "increase" : "decrease",
       description: "Interviews conducted",
+      action: () => navigate("/interviews"),
     },
     {
-      name: "Completed Analyses",
+      name: "AI Transcriptions",
       value: stats.analyzedInterviews || 0,
-      icon: DocumentChartBarIcon,
-      color: "bg-gradient-to-r from-indigo-500 to-indigo-600",
-      change: `${(
+      icon: MicrophoneIcon,
+      color: "bg-gradient-to-r from-purple-500 to-purple-600",
+      change: `${stats.pendingAnalysis || 0} pending`,
+      changeType: "neutral",
+      description: "AI analysis completed",
+      action: () => navigate("/interviews"),
+    },
+    {
+      name: "Processing Queue",
+      value: stats.processingInterviews || 0,
+      icon: CpuChipIcon,
+      color: "bg-gradient-to-r from-orange-500 to-orange-600",
+      change: "Currently processing",
+      changeType: "neutral",
+      description: "Audio files in queue",
+      action: () => navigate("/interviews"),
+    },
+    {
+      name: "Completion Rate",
+      value: `${(
         ((stats.analyzedInterviews || 0) /
           Math.max(stats.totalInterviews || 0, 1)) *
         100
       ).toFixed(0)}%`,
-      changeType: "neutral",
-      description: "AI analysis completed",
-    },
-    {
-      name: "Average Score",
-      value: (stats.averageScore || 0).toFixed(1),
       icon: TrophyIcon,
-      color: "bg-gradient-to-r from-yellow-500 to-orange-500",
-      change: "Overall performance",
+      color: "bg-gradient-to-r from-indigo-500 to-indigo-600",
+      change: "Success rate",
       changeType: "neutral",
-      description: "Average interview score",
+      description: "Analysis completion",
+      action: () => navigate("/interviews"),
     },
   ];
 
@@ -237,8 +222,12 @@ const Dashboard = () => {
             <div className="animate-spin rounded-full h-20 w-20 border-4 border-blue-600 border-t-transparent absolute top-0 left-0"></div>
           </div>
           <div className="text-center">
-            <p className="text-gray-700 font-semibold text-lg">Loading Dashboard</p>
-            <p className="text-gray-500 text-sm">Fetching your latest data...</p>
+            <p className="text-gray-700 font-semibold text-lg">
+              Loading Dashboard
+            </p>
+            <p className="text-gray-500 text-sm">
+              Fetching your latest data...
+            </p>
           </div>
         </div>
       </div>
@@ -274,11 +263,12 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {statCards.map((card, index) => (
             <div
               key={index}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+              onClick={card.action}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all cursor-pointer hover:scale-105"
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
@@ -318,6 +308,7 @@ const Dashboard = () => {
                     {card.description}
                   </p>
                 </div>
+                <ArrowRightIcon className="h-5 w-5 text-gray-400" />
               </div>
             </div>
           ))}
@@ -325,103 +316,75 @@ const Dashboard = () => {
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Score Trends Chart */}
+          {/* AI Processing Status */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900">
-                Performance Trends
+                AI Processing Pipeline
               </h3>
-              <ChartBarIcon className="h-5 w-5 text-gray-400" />
+              <CpuChipIcon className="h-5 w-5 text-gray-400" />
             </div>
-            {scoreTrends.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={scoreTrends}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis domain={[0, 10]} tick={{ fontSize: 12 }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "white",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "8px",
-                      boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="overall"
-                    stroke="#3B82F6"
-                    fill="url(#colorOverall)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="technical"
-                    stroke="#10B981"
-                    fill="url(#colorTechnical)"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="communication"
-                    stroke="#F59E0B"
-                    fill="url(#colorCommunication)"
-                    strokeWidth={2}
-                  />
-                  <defs>
-                    <linearGradient
-                      id="colorOverall"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient
-                      id="colorTechnical"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient
-                      id="colorCommunication"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-300 flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <ChartBarIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>No performance data available yet</p>
-                  <p className="text-sm">
-                    Complete some interviews to see trends
-                  </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                    <DocumentTextIcon className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-blue-900">
+                      Audio Transcription
+                    </p>
+                    <p className="text-sm text-blue-600">Using Whisper AI</p>
+                  </div>
                 </div>
+                <span className="text-lg font-bold text-blue-600">
+                  {stats.analyzedInterviews || 0}
+                </span>
               </div>
-            )}
+
+              <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                    <ClockIcon className="h-5 w-5 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-yellow-900">In Processing</p>
+                    <p className="text-sm text-yellow-600">
+                      Currently analyzing
+                    </p>
+                  </div>
+                </div>
+                <span className="text-lg font-bold text-yellow-600">
+                  {stats.processingInterviews || 0}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-gray-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      Pending Analysis
+                    </p>
+                    <p className="text-sm text-gray-600">Waiting in queue</p>
+                  </div>
+                </div>
+                <span className="text-lg font-bold text-gray-600">
+                  {stats.pendingAnalysis || 0}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {/* Status Distribution */}
+          {/* Interview Status Distribution */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-gray-900">
-                Interview Status Distribution
+                Interview Status Overview
               </h3>
-              <SparklesIcon className="h-5 w-5 text-gray-400" />
+              <ChartBarIcon className="h-5 w-5 text-gray-400" />
             </div>
             {statusDistribution.interviewStatuses.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
@@ -453,7 +416,7 @@ const Dashboard = () => {
             ) : (
               <div className="h-300 flex items-center justify-center text-gray-500">
                 <div className="text-center">
-                  <SparklesIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <ChartBarIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                   <p>No status data available</p>
                   <p className="text-sm">
                     Create some interviews to see distribution
@@ -472,60 +435,77 @@ const Dashboard = () => {
               <h3 className="text-lg font-semibold text-gray-900">
                 Recent Interviews
               </h3>
-              <ClockIcon className="h-5 w-5 text-gray-400" />
+              <button
+                onClick={() => navigate("/interviews")}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                View All
+                <ArrowRightIcon className="h-4 w-4" />
+              </button>
             </div>
             <div className="space-y-4">
               {recentInterviews.length > 0 ? (
                 recentInterviews.map((interview, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => navigate("/interviews")}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-blue-600 font-medium text-sm">
-                          {interview.candidate?.name?.charAt(0) || "?"}
-                        </span>
+                      <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                        <UserIcon className="h-5 w-5 text-indigo-600" />
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">
-                          {interview.candidate?.name || "Unknown"}
+                          {interview.candidateName || "Unnamed Candidate"}
                         </p>
                         <p className="text-sm text-gray-500">
-                          {interview.interviewGroup?.position || "No position"}
+                          {interview.fileName || "No file name"}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {new Date(interview.createdAt).toLocaleDateString()}
+                          {interview.createdAt
+                            ? new Date(interview.createdAt).toLocaleDateString()
+                            : "Recent"}
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                      {interview.analysis?.overallScore && (
-                        <span
-                          className={`text-sm font-medium ${getScoreColor(
-                            interview.analysis.overallScore
-                          )}`}
-                        >
-                          {interview.analysis.overallScore.toFixed(1)}
-                        </span>
-                      )}
-                      <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                          interview.status
-                        )}`}
+                      <div
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          interview.analysisStatus === "completed"
+                            ? "bg-green-100 text-green-800"
+                            : interview.analysisStatus === "processing"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : interview.analysisStatus === "failed"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
                       >
-                        {interview.status}
-                      </span>
+                        {interview.analysisStatus === "completed"
+                          ? "Completed"
+                          : interview.analysisStatus === "processing"
+                          ? "Processing"
+                          : interview.analysisStatus === "failed"
+                          ? "Failed"
+                          : "Pending"}
+                      </div>
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="text-center py-8 text-gray-500">
-                  <VideoCameraIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>No recent interviews</p>
-                  <p className="text-sm">
-                    Start conducting interviews to see them here
+                  <MicrophoneIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p className="mb-2">No interviews yet</p>
+                  <p className="text-sm mb-4">
+                    Start by uploading an interview audio file
                   </p>
+                  <button
+                    onClick={() => navigate("/interviews")}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    Upload Interview
+                  </button>
                 </div>
               )}
             </div>
@@ -537,46 +517,62 @@ const Dashboard = () => {
               <h3 className="text-lg font-semibold text-gray-900">
                 Interview Groups
               </h3>
-              <UserGroupIcon className="h-5 w-5 text-gray-400" />
+              <button
+                onClick={() => navigate("/interview-groups")}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                View All
+                <ArrowRightIcon className="h-4 w-4" />
+              </button>
             </div>
             <div className="space-y-4">
               {interviewGroupsSummary.length > 0 ? (
                 interviewGroupsSummary.map((group, index) => (
                   <div
                     key={index}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    onClick={() => navigate("/interview-groups")}
                   >
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{group.name}</p>
-                      <p className="text-sm text-gray-500">{group.college}</p>
-                      <div className="flex items-center space-x-4 mt-2">
-                        <span className="text-xs text-gray-400">
-                          {group.currentCandidates}/{group.maxCandidates}{" "}
-                          candidates
-                        </span>
-                        {group.interviewDate && (
-                          <span className="text-xs text-gray-400">
-                            {new Date(group.interviewDate).toLocaleDateString()}
-                          </span>
-                        )}
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                        <UserGroupIcon className="h-5 w-5 text-purple-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">
+                          {group.name}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {group.position}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {group.interviewCount} interviews
+                        </p>
                       </div>
                     </div>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                        group.status
-                      )}`}
-                    >
-                      {group.status}
-                    </span>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">
+                        {group.completedCount || 0} completed
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {group.processingCount || 0} processing
+                      </p>
+                    </div>
                   </div>
                 ))
               ) : (
                 <div className="text-center py-8 text-gray-500">
                   <UserGroupIcon className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>No interview groups</p>
-                  <p className="text-sm">
-                    Create your first interview group to get started
+                  <p className="mb-2">No interview groups yet</p>
+                  <p className="text-sm mb-4">
+                    Create groups to organize your interviews
                   </p>
+                  <button
+                    onClick={() => navigate("/interview-groups")}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    Create Group
+                  </button>
                 </div>
               )}
             </div>
@@ -590,20 +586,20 @@ const Dashboard = () => {
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <button
-              onClick={() => (window.location.href = "/candidates")}
+              onClick={() => navigate("/interviews")}
               className="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
             >
-              <UsersIcon className="h-6 w-6 text-blue-600" />
+              <MicrophoneIcon className="h-6 w-6 text-blue-600" />
               <div className="text-left">
-                <p className="font-medium text-blue-900">Add Candidates</p>
+                <p className="font-medium text-blue-900">Upload Interview</p>
                 <p className="text-sm text-blue-600">
-                  Manage candidate profiles
+                  Start audio transcription
                 </p>
               </div>
             </button>
 
             <button
-              onClick={() => (window.location.href = "/interview-groups")}
+              onClick={() => navigate("/interview-groups")}
               className="flex items-center space-x-3 p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors"
             >
               <UserGroupIcon className="h-6 w-6 text-green-600" />
@@ -614,26 +610,26 @@ const Dashboard = () => {
             </button>
 
             <button
-              onClick={() => (window.location.href = "/question-sets")}
+              onClick={() => navigate("/interviews")}
               className="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors"
             >
-              <ClipboardDocumentListIcon className="h-6 w-6 text-purple-600" />
+              <DocumentTextIcon className="h-6 w-6 text-purple-600" />
               <div className="text-left">
-                <p className="font-medium text-purple-900">Question Sets</p>
+                <p className="font-medium text-purple-900">View Transcripts</p>
                 <p className="text-sm text-purple-600">
-                  Manage interview questions
+                  Browse analyzed interviews
                 </p>
               </div>
             </button>
 
             <button
-              onClick={() => (window.location.href = "/interviews")}
+              onClick={() => navigate("/interview-groups")}
               className="flex items-center space-x-3 p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors"
             >
-              <VideoCameraIcon className="h-6 w-6 text-orange-600" />
+              <CpuChipIcon className="h-6 w-6 text-orange-600" />
               <div className="text-left">
-                <p className="font-medium text-orange-900">Start Interview</p>
-                <p className="text-sm text-orange-600">Conduct new interview</p>
+                <p className="font-medium text-orange-900">AI Processing</p>
+                <p className="text-sm text-orange-600">Monitor AI pipeline</p>
               </div>
             </button>
           </div>

@@ -13,6 +13,14 @@ import {
   VideoCameraIcon,
   DocumentTextIcon,
   CloudArrowUpIcon,
+  EyeIcon,
+  ArrowRightIcon,
+  StarIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
 } from "@heroicons/react/24/outline";
 
 const InterviewGroups = () => {
@@ -190,22 +198,28 @@ const InterviewGroups = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case "Draft":
-        return "bg-gray-100 text-gray-800";
+        return "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 shadow-sm border border-gray-200";
       case "Active":
-        return "bg-green-100 text-green-800";
+        return "bg-gradient-to-r from-gradient- to-emerald-200to-r from-green shadow-sm border border-green-200-100 to-emerald-200 text-green-800 shadow-sm border border-green-200";
       case "Completed":
         return "bg-blue-100 text-blue-800";
       case "Archived":
-        return "bg-gray-100 text-gray-800";
+        return "bg-gradient-to-r from-purple-100 to-violet-200 text-purple-800 shadow-sm border border-purple-200";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 shadow-sm border border-gray-200";
     }
   };
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex justify-center items-center">
+        <div className="text-center">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-600 shadow-lg"></div>
+            <div className="absolute inset-0 rounded-full h-16 w-16 border-4 border-purple-200 border-t-purple-600 animate-ping opacity-20"></div>
+          </div>
+          <p className="mt-4 text-gray-600 font-medium">Loading interview groups...</p>
+        </div>
       </div>
     );
   }

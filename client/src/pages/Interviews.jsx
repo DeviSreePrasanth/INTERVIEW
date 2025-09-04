@@ -22,6 +22,9 @@ import {
   ClockIcon,
   ChartBarIcon,
   SpeakerWaveIcon,
+  BoltIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/outline";
 import {
   CheckCircleIcon as CheckCircleIconSolid,
@@ -69,6 +72,11 @@ const Interviews = () => {
     candidateEmail: "",
     interviewerName: "",
   });
+
+  // Q&A Pagination state
+  const [qaCurrentPage, setQaCurrentPage] = useState(1);
+  const [qaItemsPerPage] = useState(10);
+  const [showFormattedQA, setShowFormattedQA] = useState(false);
 
   // Refs for uncontrolled inputs to avoid focus loss
   const candidateNameRef = useRef(null);
@@ -325,6 +333,18 @@ const Interviews = () => {
     if (candidateNameRef.current) candidateNameRef.current.value = "";
     if (candidateEmailRef.current) candidateEmailRef.current.value = "";
     if (interviewerNameRef.current) interviewerNameRef.current.value = "";
+    
+    // Reset Q&A pagination
+    setQaCurrentPage(1);
+  };
+
+  // Q&A Pagination helper functions
+  const resetQaPagination = () => {
+    setQaCurrentPage(1);
+  };
+
+  const handleQaPageChange = (newPage) => {
+    setQaCurrentPage(newPage);
   };
 
   // Audio file handling
@@ -529,6 +549,7 @@ const Interviews = () => {
   const viewInterviewDetails = (interview) => {
     setSelectedInterview(interview);
     setShowDetails(true);
+    resetQaPagination(); // Reset pagination when viewing new interview
   };
 
   const handleDeleteInterview = async (interviewId) => {
@@ -1549,7 +1570,7 @@ const Interviews = () => {
   const InterviewDetailsModal = () => {
     if (!showDetails || !selectedInterview) return null;
 
-    // Helper function to parse transcript into Q&A format
+    // Enhanced function to parse transcript into Q&A format
     const parseTranscriptToQA = (transcript) => {
       if (!transcript) return [];
 
@@ -1559,88 +1580,141 @@ const Interviews = () => {
           : transcript;
       if (!text) return [];
 
-      // Split by common question patterns and indicators
+      // Step 1: Split transcript into sentences using regex
       const sentences = text
         .split(/[.!?]+/)
-        .filter((sentence) => sentence.trim().length > 0);
+        .map(s => s.trim())
+        .filter(sentence => sentence.length > 10); // Filter out very short fragments
+
       const qaItems = [];
-      let currentQuestion = null;
+      let currentQuestion = [];
       let currentAnswer = [];
+      let isCollectingQuestion = false;
+      let isCollectingAnswer = false;
 
-      sentences.forEach((sentence, index) => {
-        const trimmedSentence = sentence.trim();
-        if (!trimmedSentence) return;
+      sentences.forEach((sentence) => {
+        if (!sentence) return;
 
-        // Detect question patterns
-        const questionPatterns = [
-          /^(what|how|why|when|where|who|which|can you|could you|would you|do you|did you|have you|are you|will you)/i,
-          /\?$/,
-          /^(tell me|describe|explain|walk me through)/i,
-          /^(interviewer|hr|recruiter):/i,
+        // Step 2: Detect if sentence belongs to Interviewer or Candidate
+        
+        // Enhanced Interviewer patterns (Questions)
+        const interviewerPatterns = [
+          /\?$/,  // Ends with question mark
+          /^(what|how|why|when|where|who|which|can you|could you|would you|do you|did you|have you|are you|will you|shall we|let's|please)/i,
+          /^(tell me|describe|explain|walk me through|talk about|share|give me|show me)/i,
+          /^(interviewer|hr|recruiter|manager):/i,
+          /(introduce yourself|about yourself|your background|your experience|your skills)/i,
+          /(strengths|weaknesses|challenges|goals|expectations)/i,
+          /(why should we|why do you|what makes you|how would you)/i,
         ];
 
-        // Detect answer patterns
-        const answerPatterns = [
-          /^(i |my |yes|no|well|so|actually|basically|candidate:|interviewee:)/i,
-          /^(sure|definitely|absolutely|of course)/i,
+        // Enhanced Candidate patterns (Answers)
+        const candidatePatterns = [
+          /^(sir|madam|yes|no|well|so|actually|basically|sure|definitely|absolutely|of course|thank you|thanks)/i,
+          /^(i |my |me |myself|we |our |us )/i,
+          /^(candidate|interviewee|student):/i,
+          /^(good morning|good afternoon|good evening|hello|hi)/i,
+          /^(as i mentioned|like i said|as you know|from my experience)/i,
         ];
 
-        const isQuestion = questionPatterns.some((pattern) =>
-          pattern.test(trimmedSentence)
+        const isInterviewerSentence = interviewerPatterns.some(pattern => 
+          pattern.test(sentence)
         );
-        const isAnswer = answerPatterns.some((pattern) =>
-          pattern.test(trimmedSentence)
+        
+        const isCandidateSentence = candidatePatterns.some(pattern => 
+          pattern.test(sentence)
         );
 
-        if (isQuestion || (index === 0 && !isAnswer)) {
-          // Save previous Q&A pair if exists
-          if (currentQuestion && currentAnswer.length > 0) {
+        // Step 3: Group sentences into Q&A pairs
+        
+        if (isInterviewerSentence || (!isCandidateSentence && !isCollectingAnswer)) {
+          // Start new question or continue current question
+          if (isCollectingAnswer && currentQuestion.length > 0 && currentAnswer.length > 0) {
+            // Save previous Q&A pair
             qaItems.push({
-              question: currentQuestion,
-              answer: currentAnswer.join(" ").trim(),
+              question: currentQuestion.join(" ").trim().replace(/^(interviewer|hr|recruiter):\s*/i, ""),
+              answer: currentAnswer.join(" ").trim().replace(/^(candidate|interviewee|student):\s*/i, "")
             });
+            currentQuestion = [];
+            currentAnswer = [];
           }
-
-          // Start new question
-          currentQuestion = trimmedSentence.replace(
-            /^(interviewer|hr|recruiter):\s*/i,
-            ""
-          );
-          currentAnswer = [];
-        } else {
+          
+          // Add to current question
+          const cleanSentence = sentence.replace(/^(interviewer|hr|recruiter):\s*/i, "");
+          currentQuestion.push(cleanSentence);
+          isCollectingQuestion = true;
+          isCollectingAnswer = false;
+          
+        } else if (isCandidateSentence || isCollectingAnswer) {
           // Add to current answer
-          const cleanAnswer = trimmedSentence.replace(
-            /^(candidate|interviewee):\s*/i,
-            ""
-          );
-          currentAnswer.push(cleanAnswer);
+          const cleanSentence = sentence.replace(/^(candidate|interviewee|student):\s*/i, "");
+          currentAnswer.push(cleanSentence);
+          isCollectingAnswer = true;
+          isCollectingQuestion = false;
+        } else {
+          // Ambiguous sentence - add to whatever we're currently collecting
+          if (isCollectingQuestion) {
+            currentQuestion.push(sentence);
+          } else {
+            currentAnswer.push(sentence);
+            isCollectingAnswer = true;
+          }
         }
       });
 
-      // Add the last Q&A pair
-      if (currentQuestion && currentAnswer.length > 0) {
+      // Add the final Q&A pair
+      if (currentQuestion.length > 0 && currentAnswer.length > 0) {
         qaItems.push({
-          question: currentQuestion,
-          answer: currentAnswer.join(" ").trim(),
+          question: currentQuestion.join(" ").trim().replace(/^(interviewer|hr|recruiter):\s*/i, ""),
+          answer: currentAnswer.join(" ").trim().replace(/^(candidate|interviewee|student):\s*/i, "")
         });
       }
 
-      // If no clear Q&A structure detected, create a fallback structure
-      if (qaItems.length === 0 && text.length > 0) {
+      // Step 4: Clean up and validate Q&A pairs
+      const validQaItems = qaItems.filter(qa => 
+        qa.question.length > 5 && qa.answer.length > 5
+      );
+
+      // If no clear Q&A structure detected, create fallback using paragraph splitting
+      if (validQaItems.length === 0 && text.length > 0) {
+        console.log("Falling back to paragraph-based parsing");
         const paragraphs = text
           .split(/\n\n|\n/)
-          .filter((p) => p.trim().length > 0);
-        paragraphs.forEach((paragraph, index) => {
-          if (index % 2 === 0) {
-            qaItems.push({
-              question: `Question ${Math.floor(index / 2) + 1}`,
-              answer: paragraph.trim(),
+          .map(p => p.trim())
+          .filter(p => p.length > 20);
+          
+        for (let i = 0; i < paragraphs.length - 1; i += 2) {
+          if (paragraphs[i] && paragraphs[i + 1]) {
+            validQaItems.push({
+              question: paragraphs[i],
+              answer: paragraphs[i + 1]
             });
           }
-        });
+        }
       }
 
-      return qaItems;
+      return validQaItems;
+    };
+
+    // Function to convert Q&A items to formatted string (as requested)
+    const convertToQaFormat = (qaItems) => {
+      if (!qaItems || qaItems.length === 0) {
+        return "No Q&A pairs found in the transcript.";
+      }
+
+      let formattedString = "";
+      qaItems.forEach((qa, index) => {
+        formattedString += `Q\n`;
+        formattedString += `Question ${index + 1}\n`;
+        formattedString += `${qa.question}\n`;
+        formattedString += `A\n`;
+        formattedString += `${qa.answer}\n`;
+        if (index < qaItems.length - 1) {
+          formattedString += `\n`;
+        }
+      });
+
+      return formattedString;
     };
 
     return (
@@ -1725,10 +1799,47 @@ const Interviews = () => {
           {(selectedInterview.transcript?.cleaned ||
             selectedInterview.transcript) && (
             <div className="mb-6">
-              <h3 className="font-semibold mb-3 flex items-center">
-                <DocumentTextIcon className="h-5 w-5 mr-2" />
-                Interview Transcript
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold flex items-center">
+                  <DocumentTextIcon className="h-5 w-5 mr-2" />
+                  Interview Transcript
+                </h3>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowFormattedQA(true)}
+                    className="inline-flex items-center px-3 py-1 text-xs font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
+                  >
+                    <EyeIcon className="h-4 w-4 mr-1" />
+                    View Q&A Format
+                  </button>
+                  <button
+                    onClick={() => {
+                      const qaItems = parseTranscriptToQA(
+                        selectedInterview.transcript?.cleaned ||
+                          selectedInterview.transcript
+                      );
+                      const formattedQA = convertToQaFormat(qaItems);
+                      
+                      // Create and download the Q&A formatted text file
+                      const blob = new Blob([formattedQA], { type: 'text/plain' });
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${selectedInterview.candidateName || 'interview'}_QA_breakdown.txt`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                    }}
+                    className="inline-flex items-center px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+                  >
+                    <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export Q&A
+                  </button>
+                </div>
+              </div>
               <div className="bg-gray-50 p-4 rounded-lg max-h-64 overflow-y-auto">
                 <p className="text-sm leading-relaxed whitespace-pre-wrap">
                   {selectedInterview.transcript?.cleaned ||
@@ -1736,22 +1847,53 @@ const Interviews = () => {
                 </p>
               </div>
 
-              {/* Question & Answer Format */}
+              {/* Question & Answer Format with Pagination */}
               {(() => {
                 const qaItems = parseTranscriptToQA(
                   selectedInterview.transcript?.cleaned ||
                     selectedInterview.transcript
                 );
-                return (
-                  qaItems.length > 0 && (
+                
+                if (qaItems.length === 0) {
+                  return (
                     <div className="mt-4">
                       <h4 className="text-sm font-medium text-gray-700 mb-3">
                         Question & Answer Breakdown
                       </h4>
-                      <div className="space-y-4 max-h-96 overflow-y-auto">
-                        {qaItems.slice(0, 10).map((qa, index) => (
+                      <p className="text-xs text-gray-500 italic text-center py-8">
+                        Unable to parse transcript into Q&A format
+                      </p>
+                    </div>
+                  );
+                }
+
+                const totalPages = Math.ceil(qaItems.length / qaItemsPerPage);
+                const startIndex = (qaCurrentPage - 1) * qaItemsPerPage;
+                const endIndex = startIndex + qaItemsPerPage;
+                const currentQaItems = qaItems.slice(startIndex, endIndex);
+
+                return (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-700">
+                        Question & Answer Breakdown
+                      </h4>
+                      <div className="flex items-center space-x-3 text-xs text-gray-500">
+                        <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full font-medium">
+                          {qaItems.length} Q&A pairs detected
+                        </span>
+                        <span>
+                          Enhanced parsing algorithm
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                      {currentQaItems.map((qa, index) => {
+                        const actualIndex = startIndex + index + 1;
+                        return (
                           <div
-                            key={index}
+                            key={startIndex + index}
                             className="bg-white rounded-lg border border-gray-200 p-4"
                           >
                             <div className="mb-3">
@@ -1760,6 +1902,11 @@ const Interviews = () => {
                                   Q
                                 </span>
                                 <div className="flex-1">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-gray-500 font-medium">
+                                      Question {actualIndex}
+                                    </span>
+                                  </div>
                                   <p className="text-sm font-medium text-gray-900 leading-relaxed">
                                     {qa.question}
                                   </p>
@@ -1779,21 +1926,74 @@ const Interviews = () => {
                               </div>
                             </div>
                           </div>
-                        ))}
-                        {qaItems.length > 10 && (
-                          <p className="text-xs text-gray-500 italic text-center">
-                            Showing first 10 of {qaItems.length} question-answer
-                            pairs
-                          </p>
-                        )}
-                        {qaItems.length === 0 && (
-                          <p className="text-xs text-gray-500 italic text-center">
-                            Unable to parse transcript into Q&A format
-                          </p>
-                        )}
-                      </div>
+                        );
+                      })}
                     </div>
-                  )
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                      <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
+                        <div className="text-xs text-gray-500">
+                          Showing {startIndex + 1} to {Math.min(endIndex, qaItems.length)} of {qaItems.length} Q&A pairs
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleQaPageChange(qaCurrentPage - 1)}
+                            disabled={qaCurrentPage === 1}
+                            className={`p-2 rounded-md text-sm font-medium transition-colors ${
+                              qaCurrentPage === 1
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            <ChevronLeftIcon className="h-4 w-4" />
+                          </button>
+                          
+                          <div className="flex items-center space-x-1">
+                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                              let pageNumber;
+                              if (totalPages <= 5) {
+                                pageNumber = i + 1;
+                              } else if (qaCurrentPage <= 3) {
+                                pageNumber = i + 1;
+                              } else if (qaCurrentPage >= totalPages - 2) {
+                                pageNumber = totalPages - 4 + i;
+                              } else {
+                                pageNumber = qaCurrentPage - 2 + i;
+                              }
+                              
+                              return (
+                                <button
+                                  key={pageNumber}
+                                  onClick={() => handleQaPageChange(pageNumber)}
+                                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                                    qaCurrentPage === pageNumber
+                                      ? 'bg-blue-600 text-white'
+                                      : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  {pageNumber}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          
+                          <button
+                            onClick={() => handleQaPageChange(qaCurrentPage + 1)}
+                            disabled={qaCurrentPage === totalPages}
+                            className={`p-2 rounded-md text-sm font-medium transition-colors ${
+                              qaCurrentPage === totalPages
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
+                          >
+                            <ChevronRightIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })()}
 
@@ -2133,6 +2333,65 @@ const Interviews = () => {
         selectedInterview={selectedInterview}
         onClose={() => setShowDetails(false)}
       />
+
+      {/* Formatted Q&A Modal */}
+      {showFormattedQA && selectedInterview && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-screen overflow-hidden">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold">Formatted Q&A Breakdown</h2>
+              <button
+                onClick={() => setShowFormattedQA(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="mb-4 text-sm text-gray-600">
+              <p>Below is the structured Q&A format extracted from the interview transcript:</p>
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
+              <pre className="text-sm font-mono leading-relaxed whitespace-pre-wrap">
+                {(() => {
+                  const qaItems = parseTranscriptToQA(
+                    selectedInterview.transcript?.cleaned ||
+                      selectedInterview.transcript
+                  );
+                  return convertToQaFormat(qaItems);
+                })()}
+              </pre>
+            </div>
+            
+            <div className="mt-4 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  const qaItems = parseTranscriptToQA(
+                    selectedInterview.transcript?.cleaned ||
+                      selectedInterview.transcript
+                  );
+                  const formattedQA = convertToQaFormat(qaItems);
+                  
+                  // Copy to clipboard
+                  navigator.clipboard.writeText(formattedQA).then(() => {
+                    alert('Q&A format copied to clipboard!');
+                  });
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Copy to Clipboard
+              </button>
+              <button
+                onClick={() => setShowFormattedQA(false)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
