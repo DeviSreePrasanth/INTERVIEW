@@ -7,7 +7,6 @@ import {
   VideoCameraIcon,
   UserGroupIcon,
   DocumentTextIcon,
-  DocumentChartBarIcon,
   Bars3Icon,
   XMarkIcon,
   ArrowRightOnRectangleIcon,

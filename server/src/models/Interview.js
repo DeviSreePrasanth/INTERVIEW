@@ -1,5 +1,50 @@
 const mongoose = require("mongoose");
 
+const audioSessionSchema = new mongoose.Schema({
+  filename: String,
+  originalname: String,
+  mimetype: String,
+  size: Number,
+  path: String,
+  url: String,
+  transcript: String,
+  analysisStatus: {
+    type: String,
+    enum: ["Pending", "Processing", "Analyzed", "Failed"],
+    default: "Pending",
+  },
+  analysisError: String,
+  analysis: {
+    transcript: String,
+    segments: [
+      new mongoose.Schema(
+        {
+          start: Number,
+          end: Number,
+          text: String,
+        },
+        { _id: false }
+      ),
+    ],
+    communicationMetrics: {
+      wordsPerMinute: Number,
+      totalWords: Number,
+      duration: Number,
+      durationSeconds: Number,
+    },
+    metadata: {
+      processingTimeMs: Number,
+      model: String,
+      language: String,
+      createdAt: Date,
+    },
+  },
+  uploadedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 const questionSchema = new mongoose.Schema({
   question: {
     type: String,
@@ -53,6 +98,10 @@ const interviewSchema = new mongoose.Schema(
       path: String,
       url: String,
     },
+    // Multiple audio sessions support
+    audioSessions: [audioSessionSchema],
+    
+    // Legacy fields for backward compatibility
     // Uploaded interview audio/video file metadata
     interviewFile: {
       filename: String,

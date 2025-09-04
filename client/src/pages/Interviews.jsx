@@ -22,7 +22,6 @@ import {
   ClockIcon,
   ChartBarIcon,
   SpeakerWaveIcon,
-  BoltIcon,
 } from "@heroicons/react/24/outline";
 import {
   CheckCircleIcon as CheckCircleIconSolid,
@@ -48,25 +47,21 @@ const Interviews = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [currentTranscript, setCurrentTranscript] = useState(null);
-  const [pollingId, setPollingId] = useState(null);
+  
+  // Multiple concurrent processing support
+  const [activePolling, setActivePolling] = useState(new Map()); // Map of interviewId -> intervalId
+  const activePollingRef = useRef(new Map()); // Ref to avoid dependency issues
+  const [processingInterviews, setProcessingInterviews] = useState(new Set()); // Set of processing interview IDs
+  
   const [formStep, setFormStep] = useState(1);
   const [audioFile, setAudioFile] = useState(null);
   const [audioPreview, setAudioPreview] = useState(null);
   const [dragActive, setDragActive] = useState(false);
 
-  // Transcript processing states
+  // Legacy transcript processing states (kept for compatibility)
   const [createdInterviewId, setCreatedInterviewId] = useState(null);
   const [transcript, setTranscript] = useState("");
   const [transcriptStatus, setTranscriptStatus] = useState("idle");
-
-  // Debug panel state
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
-  const [debugInfo, setDebugInfo] = useState({
-    apiCalls: [],
-    errors: [],
-    transcriptStatus: null,
-    lastUpdate: null
-  });
 
   // Form data
   const [newInterview, setNewInterview] = useState({
@@ -83,11 +78,15 @@ const Interviews = () => {
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      if (pollingId) {
-        clearInterval(pollingId);
-      }
+      // Clear all active polling intervals
+      activePollingRef.current.forEach((intervalId) => {
+        clearInterval(intervalId);
+      });
+      activePollingRef.current.clear();
+      setActivePolling(new Map());
+      setProcessingInterviews(new Set());
     };
-  }, [pollingId]);
+  }, []); // No dependencies needed for cleanup
 
   // Debug: Monitor audioFile state changes
   useEffect(() => {
@@ -99,7 +98,12 @@ const Interviews = () => {
     console.log("Parent audioPreview state changed:", audioPreview);
   }, [audioPreview]);
 
-  // Start polling for transcript
+  // Keep ref in sync with state
+  useEffect(() => {
+    activePollingRef.current = activePolling;
+  }, [activePolling]);
+
+  // Start polling for transcript - supports multiple concurrent processes
   const startPollingTranscript = useCallback(
     (interviewId) => {
       console.log("=== Starting Polling ===");
@@ -108,11 +112,17 @@ const Interviews = () => {
 
       if (!interviewId) {
         console.error("No interview ID provided to polling function!");
-        setTranscriptStatus("error");
         return;
       }
 
-      if (pollingId) clearInterval(pollingId);
+      // Check if already polling this interview
+      if (activePollingRef.current.has(interviewId)) {
+        console.log("Already polling interview:", interviewId);
+        return;
+      }
+
+      // Add to processing set
+      setProcessingInterviews(prev => new Set(prev).add(interviewId));
 
       const interval = setInterval(async () => {
         try {
@@ -130,52 +140,68 @@ const Interviews = () => {
               response.status,
               response.statusText
             );
-            setTranscriptStatus("error");
+            // Stop polling this interview on error
+            stopPollingTranscript(interviewId);
             return;
           }
 
           const data = await response.json();
-          console.log("Polling status:", data);
-
-          // Update transcript status
-          if (data.analysisStatus === "Processing") {
-            setTranscriptStatus("processing");
-          } else if (data.analysisStatus === "Analyzed") {
-            setTranscriptStatus("completed");
-          } else if (data.analysisStatus === "Failed") {
-            setTranscriptStatus("error");
-          }
-
-          // Update transcript content
-          if (data.transcript) {
-            setTranscript(data.transcript);
-          }
+          console.log("Polling status for", interviewId, ":", data);
 
           // Stop polling when complete or failed
           if (
             data.analysisStatus === "Analyzed" ||
             data.analysisStatus === "Failed"
           ) {
-            clearInterval(interval);
-            setPollingId(null);
-            setIsProcessing(false);
-
-            // Reload interviews list
+            console.log("Processing complete for interview:", interviewId, "Status:", data.analysisStatus);
+            stopPollingTranscript(interviewId);
+            
+            // Reload interviews list to show updated status
             await loadInterviewGroupData();
+            
+            // Show notification
+            const message = data.analysisStatus === "Analyzed" 
+              ? `Audio processing completed for interview ${interviewId.slice(-6)}`
+              : `Audio processing failed for interview ${interviewId.slice(-6)}`;
+            
+            // Optional: Show a toast notification instead of alert
+            console.log(message);
           }
         } catch (error) {
-          console.error("Polling error:", error);
-          setTranscriptStatus("error");
-          clearInterval(interval);
-          setPollingId(null);
-          setIsProcessing(false);
+          console.error("Polling error for", interviewId, ":", error);
+          stopPollingTranscript(interviewId);
         }
       }, 3000);
 
-      setPollingId(interval);
+      // Store the interval ID
+      activePollingRef.current.set(interviewId, interval);
+      setActivePolling(prev => new Map(prev).set(interviewId, interval));
     },
-    [pollingId]
+    [] // No dependencies needed since we use refs
   );
+
+  // Stop polling for a specific interview
+  const stopPollingTranscript = useCallback((interviewId) => {
+    // Clear from ref
+    const intervalId = activePollingRef.current.get(interviewId);
+    if (intervalId) {
+      clearInterval(intervalId);
+      activePollingRef.current.delete(interviewId);
+    }
+    
+    // Update state
+    setActivePolling(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(interviewId);
+      return newMap;
+    });
+    
+    setProcessingInterviews(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(interviewId);
+      return newSet;
+    });
+  }, []);
 
   // Effect hooks
   useEffect(() => {
@@ -220,7 +246,7 @@ const Interviews = () => {
   }, [navigate, searchParams, setSearchParams, selectedInterviewGroup]);
 
   // Data loading functions
-  const loadInterviewGroupData = async () => {
+  const loadInterviewGroupData = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
@@ -263,7 +289,7 @@ const Interviews = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedInterviewGroup]);
 
   // Form handling functions
   const resetForm = () => {
@@ -438,12 +464,20 @@ const Interviews = () => {
 
       setCreatedInterviewId(createdInterview._id);
 
-      // If audio file was uploaded, move to step 3 for transcript processing
+      // If audio file was uploaded, start background processing
       if (audioFile) {
-        setFormStep(3);
-        setTranscriptStatus("processing");
-        console.log("Starting polling with ID:", createdInterview._id);
+        console.log("Starting background processing for ID:", createdInterview._id);
+        // Start polling in background without blocking UI
         startPollingTranscript(createdInterview._id);
+        
+        // Immediately return to main view
+        setFormStep(1);
+        resetForm();
+        setShowCreateModal(false);
+        await reloadInterviewData();
+        
+        // Show success message with processing info
+        alert("Interview created successfully! Audio processing has started in the background.");
       } else {
         // No audio file, interview created successfully
         setFormStep(1);
@@ -1432,70 +1466,50 @@ const Interviews = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  {interview.processingStatus ? (
+                  {/* Check if interview is currently being processed */}
+                  {processingInterviews.has(interview._id) ? (
+                    <div className="inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full border bg-blue-100 text-blue-800 border-blue-200">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-800 mr-2"></div>
+                      Processing...
+                    </div>
+                  ) : interview.analysisStatus ? (
                     <div
                       className={`inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full border ${
-                        interview.processingStatus === "Completed"
+                        interview.analysisStatus === "Analyzed"
                           ? "bg-emerald-100 text-emerald-800 border-emerald-200"
-                          : interview.processingStatus === "Processing"
+                          : interview.analysisStatus === "Processing"
                           ? "bg-amber-100 text-amber-800 border-amber-200"
-                          : interview.processingStatus === "Failed"
+                          : interview.analysisStatus === "Failed"
                           ? "bg-red-100 text-red-800 border-red-200"
                           : "bg-gray-100 text-gray-800 border-gray-200"
                       }`}
                     >
-                      {interview.processingStatus === "Completed" && (
+                      {interview.analysisStatus === "Analyzed" && (
                         <CheckCircleIconSolid className="w-3 h-3 mr-1" />
                       )}
-                      {interview.processingStatus === "Processing" && (
+                      {interview.analysisStatus === "Processing" && (
                         <ClockIconSolid className="w-3 h-3 mr-1" />
                       )}
-                      {interview.processingStatus === "Failed" && (
+                      {interview.analysisStatus === "Failed" && (
                         <ExclamationTriangleIconSolid className="w-3 h-3 mr-1" />
                       )}
-                      {interview.processingStatus}
+                      {interview.analysisStatus}
                     </div>
                   ) : (
                     <span className="text-xs text-gray-400 italic">
-                      No ML processing
+                      No audio uploaded
                     </span>
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex items-center space-x-2">
                     <button
-                      onClick={() => {
-                        setSelectedInterview(interview);
-                        setShowDetails(true);
-                      }}
+                      onClick={() => viewInterviewDetails(interview)}
                       className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm leading-4 font-medium rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
-                      title="View Details"
+                      title="View Interview Details"
                     >
                       <EyeIcon className="h-4 w-4 mr-1" />
-                      View
-                    </button>
-
-                    {interview.transcript && (
-                      <button
-                        onClick={() => {
-                          setSelectedInterview(interview);
-                          setShowDetails(true);
-                        }}
-                        className="inline-flex items-center px-3 py-2 border border-purple-300 shadow-sm text-sm leading-4 font-medium rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 hover:border-purple-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-200"
-                        title="View AI Analysis"
-                      >
-                        <ChartBarIcon className="h-4 w-4 mr-1" />
-                        Analysis
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => handleDeleteInterview(interview._id)}
-                      className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-lg text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
-                      title="Delete Interview"
-                    >
-                      <TrashIcon className="h-4 w-4 mr-1" />
-                      Delete
+                      View Details
                     </button>
                   </div>
                 </td>
@@ -1529,11 +1543,15 @@ const Interviews = () => {
               <h3 className="font-semibold mb-3">Candidate Information</h3>
               <p>
                 <strong>Name:</strong>{" "}
-                {selectedInterview.candidate?.name || "Unknown"}
+                {selectedInterview.candidateName || selectedInterview.candidate?.name || "Unknown"}
               </p>
               <p>
                 <strong>Email:</strong>{" "}
-                {selectedInterview.candidate?.email || "N/A"}
+                {selectedInterview.candidateEmail || selectedInterview.candidate?.email || "N/A"}
+              </p>
+              <p>
+                <strong>College:</strong>{" "}
+                {selectedInterview.candidateCollege || selectedInterviewGroup?.college || "N/A"}
               </p>
             </div>
             <div>
@@ -1580,19 +1598,41 @@ const Interviews = () => {
           )}
 
           {/* Transcript Section */}
-          {selectedInterview.transcript?.cleaned && (
+          {(selectedInterview.transcript?.cleaned || selectedInterview.transcript) && (
             <div className="mb-6">
-              <h3 className="font-semibold mb-3">
-                Interview Transcript (Original with Filler Words)
+              <h3 className="font-semibold mb-3 flex items-center">
+                <DocumentTextIcon className="h-5 w-5 mr-2" />
+                Interview Transcript
               </h3>
               <div className="bg-gray-50 p-4 rounded-lg max-h-64 overflow-y-auto">
-                <p className="text-sm leading-relaxed">
-                  {selectedInterview.transcript.cleaned}
+                <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                  {selectedInterview.transcript?.cleaned || selectedInterview.transcript}
                 </p>
               </div>
+              {selectedInterview.analysis?.segments && selectedInterview.analysis.segments.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Timestamped Segments</h4>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {selectedInterview.analysis.segments.slice(0, 5).map((segment, index) => (
+                      <div key={index} className="flex items-start space-x-3 p-2 bg-white rounded border">
+                        <span className="text-xs text-blue-600 font-mono bg-blue-50 px-2 py-1 rounded">
+                          {Math.round(segment.start)}s
+                        </span>
+                        <span className="text-sm text-gray-700 flex-1">
+                          {segment.text}
+                        </span>
+                      </div>
+                    ))}
+                    {selectedInterview.analysis.segments.length > 5 && (
+                      <p className="text-xs text-gray-500 italic">
+                        Showing first 5 of {selectedInterview.analysis.segments.length} segments
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-gray-500 mt-2">
-                Note: Filler words like "um", "uh", "like" are preserved for
-                authentic analysis
+                Note: Transcript generated using AI speech recognition
               </p>
             </div>
           )}
@@ -1791,9 +1831,17 @@ const Interviews = () => {
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
                       Interview Management
                     </h1>
-                    <p className="text-sm text-gray-600 mt-1">
-                      AI-Powered Interview Analysis & Management
-                    </p>
+                    <div className="flex items-center justify-center space-x-4 mt-1">
+                      <p className="text-sm text-gray-600">
+                        AI-Powered Interview Analysis & Management
+                      </p>
+                      {processingInterviews.size > 0 && (
+                        <div className="inline-flex items-center px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-800 mr-1"></div>
+                          {processingInterviews.size} Processing
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1811,19 +1859,6 @@ const Interviews = () => {
                       </button>
                     </>
                   )}
-                  
-                  {/* Debug Toggle Button */}
-                  <button
-                    onClick={() => setShowDebugPanel(!showDebugPanel)}
-                    className={`inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg shadow-sm transition-all duration-200 ${
-                      showDebugPanel 
-                        ? 'text-white bg-gray-800 hover:bg-gray-900' 
-                        : 'text-gray-700 bg-white hover:bg-gray-50'
-                    }`}
-                    title="Toggle Debug Panel"
-                  >
-                    <BoltIcon className="h-4 w-4" />
-                  </button>
                 </div>
               </div>
 
@@ -1874,86 +1909,6 @@ const Interviews = () => {
               )}
             </div>
           </div>
-
-          {/* Debug Panel */}
-          {showDebugPanel && (
-            <div className="bg-gray-900 border-t border-gray-200">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="py-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-white">Debug Information</h3>
-                    <button
-                      onClick={() => setShowDebugPanel(false)}
-                      className="text-gray-300 hover:text-white"
-                    >
-                      <XMarkIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                    {/* API Calls */}
-                    <div className="bg-gray-800 rounded-lg p-3">
-                      <h4 className="text-green-400 font-medium mb-2">Recent API Calls</h4>
-                      <div className="space-y-1 max-h-24 overflow-y-auto">
-                        {debugInfo.apiCalls?.slice(-5).map((call, index) => (
-                          <div key={index} className="text-gray-300">
-                            <span className={`inline-block w-12 text-xs ${
-                              call.message.includes('SUCCESS') ? 'text-green-400' : 
-                              call.message.includes('ERROR') ? 'text-red-400' : 'text-yellow-400'
-                            }`}>
-                              {call.message.split(' ')[0]}
-                            </span>
-                            <span className="text-gray-400">{call.message.split(' ').slice(1).join(' ')}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Errors */}
-                    <div className="bg-gray-800 rounded-lg p-3">
-                      <h4 className="text-red-400 font-medium mb-2">Recent Errors</h4>
-                      <div className="space-y-1 max-h-24 overflow-y-auto">
-                        {debugInfo.errors?.slice(-3).map((error, index) => (
-                          <div key={index} className="text-red-300">
-                            {error.message}
-                          </div>
-                        ))}
-                        {(!debugInfo.errors || debugInfo.errors.length === 0) && (
-                          <div className="text-gray-400">No errors</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Transcript Status */}
-                    <div className="bg-gray-800 rounded-lg p-3">
-                      <h4 className="text-blue-400 font-medium mb-2">Transcript Debug</h4>
-                      <div className="space-y-1 text-gray-300">
-                        <div>Status: <span className="text-yellow-400">{transcriptStatus}</span></div>
-                        <div>Processing: <span className="text-yellow-400">{isProcessing ? 'Yes' : 'No'}</span></div>
-                        <div>Interview ID: <span className="text-yellow-400">{createdInterviewId || 'None'}</span></div>
-                        <div>Polling Active: <span className="text-yellow-400">{pollingId ? 'Yes' : 'No'}</span></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* State Overview */}
-                  <div className="mt-4 bg-gray-800 rounded-lg p-3">
-                    <h4 className="text-purple-400 font-medium mb-2">State Overview</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-gray-300">
-                      <div>Interviews: <span className="text-yellow-400">{interviews.length}</span></div>
-                      <div>Filtered: <span className="text-yellow-400">{filteredInterviews.length}</span></div>
-                      <div>Selected Group: <span className="text-yellow-400">{selectedInterviewGroup?.name || 'None'}</span></div>
-                      <div>View Mode: <span className="text-yellow-400">{viewMode}</span></div>
-                      <div>Search Term: <span className="text-yellow-400">"{searchTerm}"</span></div>
-                      <div>Filter Status: <span className="text-yellow-400">{filterStatus}</span></div>
-                      <div>Form Step: <span className="text-yellow-400">{formStep}</span></div>
-                      <div>Audio File: <span className="text-yellow-400">{audioFile?.name || 'None'}</span></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Content Area */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
